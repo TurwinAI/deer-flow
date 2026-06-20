@@ -1,10 +1,19 @@
 /**
  * Model factory. Mirrors DeerFlow's `deerflow/models`.
- * `createChatModel(name)` over `@langchain/anthropic` (Claude default) lands in
- * B02; the exact Claude model id is pinned in config there, verified against
- * the claude-api reference. API key via secret/env; mocked in unit gates.
+ * Instantiates a Claude chat model via `@langchain/anthropic`. The API key is
+ * read from the environment (never committed); it is not required to construct
+ * the model, only to invoke it — so unit gates mock invocation.
  */
-export interface ModelHandle {
-  name: string;
-  supportsVision: boolean;
+import { ChatAnthropic } from "@langchain/anthropic";
+import { DEFAULT_HARNESS_CONFIG, type HarnessConfig } from "../config";
+
+export function createChatModel(
+  config: HarnessConfig = DEFAULT_HARNESS_CONFIG,
+): ChatAnthropic {
+  return new ChatAnthropic({
+    model: config.defaultModel,
+    maxTokens: config.maxTokens,
+    temperature: 0,
+    apiKey: process.env.ANTHROPIC_API_KEY ?? "",
+  });
 }
