@@ -5,6 +5,8 @@
  * - `createCheckout` (callable): creates a Polar checkout for a product (B06).
  * - `polarWebhook` (onRequest): verifies the Standard Webhooks signature, then
  *   records paid orders + grants entitlement (B06).
+ * - admin callables (B07): `adminCreateArtist/Release/Product`, `adminListOrders`,
+ *   `runAgent` — each guarded on the `admin` custom claim (see app/gateway/adminApi).
  *
  * TEST MODE: these endpoints are kept thin and are NOT exercised by the unit /
  * emulator gates (which test the underlying app/* functions directly with a
@@ -22,6 +24,15 @@ import {
   type PolarWebhookEvent,
   type WebhookHeaders,
 } from "./app/polar/webhook";
+
+// Admin-guarded callables (B07). Re-exported so Functions deploys them.
+export {
+  adminCreateArtist,
+  adminCreateRelease,
+  adminCreateProduct,
+  adminListOrders,
+  runAgent,
+} from "./app/gateway/adminApi";
 
 export const health = onRequest((_req, res) => {
   res.json({ ok: true, ...gatewayInfo() });

@@ -15,6 +15,7 @@ export default function Nav() {
       <Link to="/artists">Artists</Link>
       <Link to="/releases">Releases</Link>
       <Link to="/shop">Shop</Link>
+      <Link to="/admin">Admin</Link>
     </nav>
   );
 }

@@ -4,10 +4,12 @@ import Home from "./pages/Home";
 import Artists from "./pages/Artists";
 import ArtistPage from "./pages/ArtistPage";
 import ReleasePage from "./pages/ReleasePage";
+import Admin from "./pages/Admin";
+import AgentConsole from "./pages/AgentConsole";
 
 /**
  * App shell: navigation + public catalog routes (B06 — home, artists, artist,
- * release). Admin / agent console routes arrive in B07.
+ * release) + owner-only admin / agent console routes (B07).
  */
 export default function App() {
   return (
@@ -19,6 +21,8 @@ export default function App() {
           <Route path="/artists" element={<Artists />} />
           <Route path="/artists/:artistId" element={<ArtistPage />} />
           <Route path="/releases/:releaseId" element={<ReleasePage />} />
+          <Route path="/admin" element={<Admin />} />
+          <Route path="/admin/agent" element={<AgentConsole />} />
           <Route path="*" element={<Home />} />
         </Routes>
       </main>

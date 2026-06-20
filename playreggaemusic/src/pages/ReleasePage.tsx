@@ -19,6 +19,7 @@ import {
   type Track,
 } from "../lib/catalog";
 import { createCheckout } from "../lib/checkout";
+import { fixturesEnabled } from "../lib/fixtures";
 
 interface ReleaseView {
   release: Release;
@@ -42,6 +43,7 @@ export default function ReleasePage() {
   const [error, setError] = useState<string | null>(null);
   const [buying, setBuying] = useState(false);
   const [buyError, setBuyError] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<string | null>(null);
 
   useEffect(() => {
     if (!releaseId) return;
@@ -70,6 +72,13 @@ export default function ReleasePage() {
     setBuyError(null);
     try {
       const { checkoutUrl } = await createCheckout(productId);
+      // Fixtures mode (offline E2E): no Polar redirect — show an inline
+      // confirmation so the purchase intent is assertable without payment.
+      if (fixturesEnabled()) {
+        setConfirmation("Checkout started — you'll be redirected to secure payment.");
+        setBuying(false);
+        return;
+      }
       window.location.assign(checkoutUrl);
     } catch {
       setBuyError("Could not start checkout. Please try again.");
@@ -124,6 +133,11 @@ export default function ReleasePage() {
               {buying ? "Starting checkout…" : "Buy digital download"}
             </button>
             {buyError && <p role="alert">{buyError}</p>}
+            {confirmation && (
+              <p role="status" className="checkout-confirmation">
+                {confirmation}
+              </p>
+            )}
           </>
         ) : (
           <p>Not yet available for purchase.</p>
