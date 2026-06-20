@@ -1,11 +1,13 @@
 import { Route, Routes } from "react-router-dom";
 import Nav from "./components/Nav";
 import Home from "./pages/Home";
+import Artists from "./pages/Artists";
+import ArtistPage from "./pages/ArtistPage";
+import ReleasePage from "./pages/ReleasePage";
 
 /**
- * B01 shell: navigation + home. Artist / release / shop / admin routes are
- * stubbed here and built out in later batches (B03 catalog UI, B06 shop,
- * B07 admin/agent console).
+ * App shell: navigation + public catalog routes (B06 — home, artists, artist,
+ * release). Admin / agent console routes arrive in B07.
  */
 export default function App() {
   return (
@@ -14,6 +16,9 @@ export default function App() {
       <main className="app-main" id="main-content">
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/artists" element={<Artists />} />
+          <Route path="/artists/:artistId" element={<ArtistPage />} />
+          <Route path="/releases/:releaseId" element={<ReleasePage />} />
           <Route path="*" element={<Home />} />
         </Routes>
       </main>

@@ -4,3 +4,4 @@
 export * from "./gateway";
 export * from "./label";
 export * from "./polar";
+export * from "./agent/leadAgent";
