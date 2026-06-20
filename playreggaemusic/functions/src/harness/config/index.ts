@@ -3,7 +3,7 @@
  * Values are env-overridable; the default model id is operator-configurable
  * and confirmed against the claude-api reference at deploy time.
  */
-export const HARNESS_VERSION = "0.3.0";
+export const HARNESS_VERSION = "0.4.0";
 
 export interface HarnessConfig {
   /** Default Claude model id resolved by the model factory. */
