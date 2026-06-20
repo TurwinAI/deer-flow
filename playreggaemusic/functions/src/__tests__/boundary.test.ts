@@ -34,7 +34,16 @@ function importSpecifiers(src: string): string[] {
 
 function reachesApp(specifier: string): boolean {
   const norm = specifier.replace(/\\/g, "/");
-  // bare "app/..." or any relative path with an "app" segment (../app, ../../app/...)
+  // The forbidden boundary is the LOCAL application layer (functions/src/app).
+  // That is reached only via a relative path with an "app" segment
+  // (./app, ../app, ../../app/...) or a bare "app"/"app/..." specifier.
+  // Third-party package subpaths that happen to contain an "app" segment
+  // (e.g. "firebase-admin/app") are NOT the app layer and must not be flagged.
+  const isRelative = norm.startsWith(".");
+  const isBareApp = norm === "app" || norm.startsWith("app/");
+  if (!isRelative && !isBareApp) {
+    return false;
+  }
   return norm.split("/").includes("app");
 }
 

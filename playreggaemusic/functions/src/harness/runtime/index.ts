@@ -9,6 +9,7 @@ import { END, MessagesAnnotation, START, StateGraph } from "@langchain/langgraph
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import type { AIMessage, BaseMessage } from "@langchain/core/messages";
 import type { StructuredToolInterface } from "@langchain/core/tools";
+import type { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 
 export type RunStatus = "pending" | "running" | "completed" | "failed";
 
@@ -33,8 +34,17 @@ export interface LeadAgentDeps {
   tools: StructuredToolInterface[];
 }
 
-/** Build the compiled lead-agent graph. */
-export function buildLeadAgentGraph({ model, tools }: LeadAgentDeps) {
+/**
+ * Build the compiled lead-agent graph. An optional `checkpointer`
+ * (B03 — a `BaseCheckpointSaver`, e.g. the `FirestoreCheckpointSaver`) is
+ * passed through to `.compile({ checkpointer })` so runs are durable and
+ * resumable by thread id.
+ */
+export function buildLeadAgentGraph({
+  model,
+  tools,
+  checkpointer,
+}: LeadAgentDeps & { checkpointer?: BaseCheckpointSaver }) {
   const bound = model.bindTools(tools);
   const toolNode = new ToolNode(tools);
 
@@ -56,7 +66,7 @@ export function buildLeadAgentGraph({ model, tools }: LeadAgentDeps) {
     .addEdge(START, "agent")
     .addConditionalEdges("agent", shouldContinue, ["tools", END])
     .addEdge("tools", "agent")
-    .compile();
+    .compile({ checkpointer });
 }
 
 /** Convenience: build the graph and run it to completion over initial messages. */

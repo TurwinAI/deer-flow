@@ -1,9 +1,18 @@
 /**
- * Persistence. A Firestore-backed LangGraph.js checkpointer (BaseCheckpointSaver)
- * plus thread store land in B03, verified against the Firestore emulator.
+ * Persistence barrel. Firestore-backed LangGraph checkpointer
+ * (BaseCheckpointSaver) + thread store, verified against the Firestore emulator
+ * in B03.
+ *
+ * `ThreadRecord` now lives in `threadStore` (the module that owns the
+ * `threads/{id}` collection). `RunRecord` continues to live in `runtime`.
  */
-export interface ThreadRecord {
-  threadId: string;
-  createdAt: string;
-  updatedAt: string;
-}
+export { getDb } from "./firestore";
+export { FirestoreCheckpointSaver } from "./checkpointer";
+export {
+  createThread,
+  getThread,
+  appendMessageSummary,
+  updateThreadTitle,
+  listThreads,
+  type ThreadRecord,
+} from "./threadStore";
