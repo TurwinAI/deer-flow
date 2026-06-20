@@ -1,0 +1,45 @@
+/*
+ * PlayReggaeMusic.ai — design tokens (B01 baseline).
+ *
+ * Register: heritage reggae imprint culture (Studio One / Trojan / VP-era)
+ * carried into a modern AI-native label. Warm and rooted, tasteful — no
+ * cliche Rasta-stripe filler. Final palette + type scale are refined in the
+ * design batch via the taste-profiler; these are the workable baseline.
+ */
+:root {
+  /* Core palette — warm, rooted, earthy */
+  --prm-parchment: #f4ecd8; /* cream / sleeve paper */
+  --prm-ink: #1c1a17; /* near-black warm ink */
+  --prm-forest: #1f4d3a; /* deep roots green */
+  --prm-gold: #c9912b; /* warm amber gold (stamp foil) */
+  --prm-oxblood: #7c2b22; /* rich red-brown */
+  --prm-clay: #b5651d; /* warm clay accent */
+
+  /* Semantic surfaces */
+  --prm-bg: var(--prm-parchment);
+  --prm-fg: var(--prm-ink);
+  --prm-accent: var(--prm-gold);
+  --prm-accent-strong: var(--prm-oxblood);
+  --prm-brand: var(--prm-forest);
+  --prm-muted: #6b6457;
+  --prm-line: #d8ccae;
+
+  /* Typography — strong ownable display + clean reading sans */
+  --prm-font-display: "Times New Roman", Georgia, "Iowan Old Style", serif;
+  --prm-font-sans:
+    system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --prm-fs-900: clamp(2.5rem, 6vw, 4rem);
+  --prm-fs-700: clamp(1.75rem, 3.5vw, 2.5rem);
+  --prm-fs-500: 1.25rem;
+  --prm-fs-400: 1rem;
+  --prm-fs-300: 0.875rem;
+
+  /* Spacing + radii */
+  --prm-space-1: 0.25rem;
+  --prm-space-2: 0.5rem;
+  --prm-space-3: 1rem;
+  --prm-space-4: 1.5rem;
+  --prm-space-5: 2.5rem;
+  --prm-radius: 6px;
+  --prm-maxw: 1100px;
+}

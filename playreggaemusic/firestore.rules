@@ -1,0 +1,40 @@
+rules_version = '2';
+
+// B01 baseline rules. The full catalog/orders/engine rules (public-read
+// catalog, admin-only writes, private masters, per-user memory/threads) are
+// authored and emulator-tested in B03 (engine) and B05 (label).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Public catalog collections are world-readable, writes are admin-only.
+    match /artists/{doc} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /releases/{doc} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /tracks/{doc} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /products/{doc} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Orders and engine state are not publicly readable. Tightened in B03/B05.
+    match /orders/{doc} {
+      allow read, write: if isAdmin();
+    }
+
+    // Default deny.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isAdmin() {
+      return request.auth != null && request.auth.token.admin == true;
+    }
+  }
+}
