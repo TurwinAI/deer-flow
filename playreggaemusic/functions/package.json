@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext .ts",
     "test": "vitest run",
-    "test:emulator": "firebase emulators:exec --only firestore --project playreggaemusic-dev 'vitest run'"
+    "test:emulator": "firebase emulators:exec --only firestore,storage --project playreggaemusic-dev 'vitest run'"
   },
   "dependencies": {
     "@langchain/anthropic": "^0.3.11",
