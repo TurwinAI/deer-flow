@@ -3,6 +3,7 @@ import Nav from "./components/Nav";
 import Home from "./pages/Home";
 import Artists from "./pages/Artists";
 import ArtistPage from "./pages/ArtistPage";
+import Releases from "./pages/Releases";
 import ReleasePage from "./pages/ReleasePage";
 import Admin from "./pages/Admin";
 import AgentConsole from "./pages/AgentConsole";
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/artists" element={<Artists />} />
           <Route path="/artists/:artistId" element={<ArtistPage />} />
+          <Route path="/releases" element={<Releases />} />
           <Route path="/releases/:releaseId" element={<ReleasePage />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/admin/agent" element={<AgentConsole />} />
