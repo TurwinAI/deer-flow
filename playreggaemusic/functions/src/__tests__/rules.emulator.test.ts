@@ -129,6 +129,24 @@ describe.skipIf(RUN)("firestore.rules (emulator)", () => {
         kind: "social_post",
         ref: "fake-social-1",
       });
+      // P2B08 analytics & A&R — business intelligence; all admin-only.
+      await setDoc(doc(db, "analytics_events", "dsp:2026-06:rel-a:streams"), {
+        id: "dsp:2026-06:rel-a:streams",
+        source: "dsp",
+        metric: "streams",
+        value: 5000,
+      });
+      await setDoc(doc(db, "insight_reports", "2026-06"), {
+        id: "2026-06",
+        period: "2026-06",
+        eventCount: 1,
+      });
+      await setDoc(doc(db, "anr_recommendations", "2026-06__follow_up_single__rel-a"), {
+        id: "2026-06__follow_up_single__rel-a",
+        kind: "follow_up_single",
+        releaseId: "rel-a",
+        proposalOnly: true,
+      });
     });
   });
 
@@ -474,6 +492,45 @@ describe.skipIf(RUN)("firestore.rules (emulator)", () => {
     const db = testEnv.authenticatedContext("fan").firestore();
     await assertFails(getDoc(doc(db, "marketing_events", "social__fake-social-1")));
     await assertFails(setDoc(doc(db, "marketing_events", "evil2"), { kind: "social_post" }));
+  });
+
+  // -- P2B08 analytics & A&R: analytics_events / insight_reports /
+  //    anr_recommendations admin-only (deny ALL client access).
+
+  it("anon CANNOT read or write analytics_events (business intelligence)", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, "analytics_events", "dsp:2026-06:rel-a:streams")));
+    await assertFails(setDoc(doc(db, "analytics_events", "evil"), { value: 1 }));
+  });
+
+  it("non-admin authenticated user CANNOT read or write analytics_events", async () => {
+    const db = testEnv.authenticatedContext("fan").firestore();
+    await assertFails(getDoc(doc(db, "analytics_events", "dsp:2026-06:rel-a:streams")));
+    await assertFails(setDoc(doc(db, "analytics_events", "evil2"), { value: 1 }));
+  });
+
+  it("anon CANNOT read or write insight_reports", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, "insight_reports", "2026-06")));
+    await assertFails(setDoc(doc(db, "insight_reports", "evil"), { eventCount: 0 }));
+  });
+
+  it("non-admin authenticated user CANNOT read or write insight_reports", async () => {
+    const db = testEnv.authenticatedContext("fan").firestore();
+    await assertFails(getDoc(doc(db, "insight_reports", "2026-06")));
+    await assertFails(setDoc(doc(db, "insight_reports", "evil2"), { eventCount: 0 }));
+  });
+
+  it("anon CANNOT read or write anr_recommendations", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, "anr_recommendations", "2026-06__follow_up_single__rel-a")));
+    await assertFails(setDoc(doc(db, "anr_recommendations", "evil"), { kind: "follow_up_single" }));
+  });
+
+  it("non-admin authenticated user CANNOT read or write anr_recommendations", async () => {
+    const db = testEnv.authenticatedContext("fan").firestore();
+    await assertFails(getDoc(doc(db, "anr_recommendations", "2026-06__follow_up_single__rel-a")));
+    await assertFails(setDoc(doc(db, "anr_recommendations", "evil2"), { kind: "follow_up_single" }));
   });
 
   it("expectations registered", () => {

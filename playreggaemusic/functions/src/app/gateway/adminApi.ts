@@ -105,6 +105,16 @@ import {
   type EmailBlastResult,
   type AdSpendResult,
 } from "../marketing/channels";
+import {
+  PolarSalesSource,
+  FakeDSPStatsSource,
+  ingestAnalytics,
+  type AnalyticsIngestResult,
+  type AnalyticsSource,
+  type DspStatFixture,
+} from "../analytics/ingest";
+import { generateInsightReport, type InsightReport } from "../analytics/insights";
+import { recommendNextActions, listRecommendations, type AnrRecommendation } from "../analytics/anr";
 import { FakeScheduler, type Scheduler } from "../../harness/orchestration";
 import { buildLabelAgent } from "../agent/leadAgent";
 import { createChatModel } from "../../harness/models";
@@ -374,6 +384,37 @@ const marketingSpendApiSchema = z.object({
   objective: z.string().min(1),
   // The admin explicitly approving this CONSEQUENTIAL spend. Required true.
   approved: z.literal(true),
+});
+
+// Analytics & A&R (P2B08, F11 + F1) schemas. All NON-consequential
+// (read/propose only). Ingestion always pulls the local Polar `orders` mirror;
+// optional deterministic DSP-stats fixtures may be supplied. No live analytics.
+const dspStatFixtureSchema = z.object({
+  id: z.string().min(1),
+  releaseId: z.string().min(1).optional(),
+  trackId: z.string().min(1).optional(),
+  streams: z.number().int().nonnegative().optional(),
+  listeners: z.number().int().nonnegative().optional(),
+  saves: z.number().int().nonnegative().optional(),
+  occurredAt: z.string().min(1),
+});
+
+const ingestAnalyticsApiSchema = z.object({
+  period: z.string().min(1),
+  /** Optional product→release map so D2C sales metrics are attributed. */
+  productReleaseMap: z.record(z.string(), z.string()).optional(),
+  /** Optional deterministic DSP-stats fixtures (streams/listeners/saves). */
+  dspStats: z.array(dspStatFixtureSchema).optional(),
+});
+
+const generateInsightsApiSchema = z.object({
+  period: z.string().min(1),
+  priorPeriod: z.string().min(1).optional(),
+});
+
+const recommendNextActionsApiSchema = z.object({
+  period: z.string().min(1),
+  priorPeriod: z.string().min(1).optional(),
 });
 
 function parse<T>(schema: z.ZodType<T>, data: unknown): T {
@@ -1064,6 +1105,61 @@ export async function handleMarketingSpend(
 }
 
 // ---------------------------------------------------------------------------
+// Analytics & A&R (P2B08, F11 + F1) — admin-guarded ingestion, insight
+// reporting, and A&R recommendation listing. ALL NON-consequential
+// (read/propose only): no release, spend, or payout is performed. Ingestion
+// reads the local Polar `orders` mirror (no network) and, when supplied,
+// deterministic DSP-stats fixtures. The REAL DSP-stats source is operator-side
+// and is NEVER wired in here. Recommendations are PROPOSALS ONLY — recording one
+// triggers nothing; consequential acts remain behind the existing approval gates.
+// ---------------------------------------------------------------------------
+
+/**
+ * Ingest analytics for a period into the admin-only `analytics_events` store.
+ * Always pulls the local Polar `orders` mirror (D2C sales metrics); optionally
+ * also ingests deterministic DSP-stats fixtures supplied by the caller. No live
+ * analytics API is ever reached.
+ */
+export async function handleIngestAnalytics(
+  req: AdminRequest<unknown>,
+): Promise<AnalyticsIngestResult> {
+  assertAdmin(req.auth);
+  const input = parse(ingestAnalyticsApiSchema, req.data);
+  const map = input.productReleaseMap ?? {};
+  const sources: AnalyticsSource[] = [new PolarSalesSource(map)];
+  if (input.dspStats && input.dspStats.length > 0) {
+    sources.push(new FakeDSPStatsSource(input.dspStats as DspStatFixture[]));
+  }
+  return ingestAnalytics(sources, input.period);
+}
+
+/** Generate + store a deterministic insight report for a period. */
+export async function handleGenerateInsights(
+  req: AdminRequest<unknown>,
+): Promise<InsightReport> {
+  assertAdmin(req.auth);
+  const input = parse(generateInsightsApiSchema, req.data);
+  return generateInsightReport(input.period, { priorPeriod: input.priorPeriod });
+}
+
+/** Derive + store A&R recommendations (PROPOSALS ONLY) for a period. */
+export async function handleRecommendNextActions(
+  req: AdminRequest<unknown>,
+): Promise<AnrRecommendation[]> {
+  assertAdmin(req.auth);
+  const input = parse(recommendNextActionsApiSchema, req.data);
+  return recommendNextActions(input.period, { priorPeriod: input.priorPeriod });
+}
+
+/** List the stored A&R recommendations (admin-only). */
+export async function handleListRecommendations(
+  req: AdminRequest<unknown>,
+): Promise<AnrRecommendation[]> {
+  assertAdmin(req.auth);
+  return listRecommendations();
+}
+
+// ---------------------------------------------------------------------------
 // Callable bindings — thin adapters from CallableRequest to the pure handlers.
 // ---------------------------------------------------------------------------
 
@@ -1188,4 +1284,20 @@ export const adminSendEmailBlast = onCall({ secrets: [emailApiToken] }, (request
 );
 export const adminMarketingSpend = onCall({ secrets: [adsApiToken] }, (request) =>
   handleMarketingSpend(toAdminRequest(request)),
+);
+
+// Analytics & A&R callables (P2B08, F11 + F1). All admin-guarded; no secrets
+// needed (no live analytics / no consequential action). Ingestion/reporting/
+// recommendation are read/propose only.
+export const adminIngestAnalytics = onCall((request) =>
+  handleIngestAnalytics(toAdminRequest(request)),
+);
+export const adminGenerateInsights = onCall((request) =>
+  handleGenerateInsights(toAdminRequest(request)),
+);
+export const adminRecommendNextActions = onCall((request) =>
+  handleRecommendNextActions(toAdminRequest(request)),
+);
+export const adminListRecommendations = onCall((request) =>
+  handleListRecommendations(toAdminRequest(request)),
 );

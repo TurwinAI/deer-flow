@@ -138,6 +138,21 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Analytics & A&R (P2B08, F11 + F1): ingested streaming/sales events, the
+    // generated insight reports, and the A&R recommendation proposals. All are
+    // BUSINESS INTELLIGENCE — admin-only, never public. Deny ALL client access.
+    // The admin SDK bypasses rules so the engine + admin callables still
+    // read/write; no client may read or write.
+    match /analytics_events/{doc=**} {
+      allow read, write: if false;
+    }
+    match /insight_reports/{doc=**} {
+      allow read, write: if false;
+    }
+    match /anr_recommendations/{doc=**} {
+      allow read, write: if false;
+    }
+
     // Engine collections: deny ALL client access. The admin SDK bypasses
     // rules, so the runtime is unaffected; no client may read or write.
     match /threads/{doc=**} {

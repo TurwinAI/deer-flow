@@ -27,6 +27,7 @@ import { getDistributionTools } from "../distribution/tools";
 import { getFinanceTools } from "../finance/tools";
 import { getPublishingTools } from "../publishing/tools";
 import { getMarketingTools } from "../marketing/tools";
+import { getAnalyticsTools } from "../analytics/tools";
 import type { SocialChannel, EmailChannel, AdChannel } from "../marketing/channels";
 import { FakeScheduler } from "../../harness/orchestration";
 import type { Scheduler } from "../../harness/orchestration";
@@ -216,6 +217,7 @@ export function buildLabelAgent({
     ...getFinanceTools(productReleaseMap),
     ...getPublishingTools(proRegistrar),
     ...getMarketingTools({ scheduler, socialChannel, emailChannel, adChannel }),
+    ...getAnalyticsTools(productReleaseMap),
     buildWritePlanTool(planState),
   ];
   if (polarClient) {

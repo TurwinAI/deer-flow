@@ -7,4 +7,5 @@ export * from "./polar";
 export * from "./finance";
 export * from "./publishing";
 export * from "./marketing";
+export * from "./analytics";
 export * from "./agent/leadAgent";

@@ -49,6 +49,10 @@ export {
   adminPublishSocialPost,
   adminSendEmailBlast,
   adminMarketingSpend,
+  adminIngestAnalytics,
+  adminGenerateInsights,
+  adminRecommendNextActions,
+  adminListRecommendations,
   runAgent,
 } from "./app/gateway/adminApi";
 
