@@ -147,6 +147,19 @@ describe.skipIf(RUN)("firestore.rules (emulator)", () => {
         releaseId: "rel-a",
         proposalOnly: true,
       });
+      // P2B09 legal — artist agreements + structured license terms are admin-only.
+      await setDoc(doc(db, "artist_agreements", "roots-untold"), {
+        artistId: "roots-untold",
+        termMonths: 24,
+        royaltyRatePct: 30,
+        status: "active",
+        consent: { aiGenerationConsent: true, signedAt: "2026-06-01T00:00:00.000Z" },
+      });
+      await setDoc(doc(db, "license_terms", "personal_download"), {
+        kind: "personal_download",
+        bodyText: "owner wording",
+        isPlaceholder: false,
+      });
     });
   });
 
@@ -531,6 +544,40 @@ describe.skipIf(RUN)("firestore.rules (emulator)", () => {
     const db = testEnv.authenticatedContext("fan").firestore();
     await assertFails(getDoc(doc(db, "anr_recommendations", "2026-06__follow_up_single__rel-a")));
     await assertFails(setDoc(doc(db, "anr_recommendations", "evil2"), { kind: "follow_up_single" }));
+  });
+
+  // -- P2B09 legal: artist_agreements + license_terms admin-only (deny client).
+
+  it("anon CANNOT read or write artist_agreements (contracts/consent stay private)", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, "artist_agreements", "roots-untold")));
+    await assertFails(
+      setDoc(doc(db, "artist_agreements", "evil"), { artistId: "evil", status: "active" }),
+    );
+  });
+
+  it("non-admin authenticated user CANNOT read or write artist_agreements", async () => {
+    const db = testEnv.authenticatedContext("fan").firestore();
+    await assertFails(getDoc(doc(db, "artist_agreements", "roots-untold")));
+    await assertFails(
+      setDoc(doc(db, "artist_agreements", "evil2"), { artistId: "evil2", status: "active" }),
+    );
+  });
+
+  it("anon CANNOT read or write license_terms", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, "license_terms", "personal_download")));
+    await assertFails(
+      setDoc(doc(db, "license_terms", "evil"), { kind: "evil", bodyText: "hax", isPlaceholder: false }),
+    );
+  });
+
+  it("non-admin authenticated user CANNOT read or write license_terms", async () => {
+    const db = testEnv.authenticatedContext("fan").firestore();
+    await assertFails(getDoc(doc(db, "license_terms", "personal_download")));
+    await assertFails(
+      setDoc(doc(db, "license_terms", "evil2"), { kind: "evil2", bodyText: "hax", isPlaceholder: false }),
+    );
   });
 
   it("expectations registered", () => {

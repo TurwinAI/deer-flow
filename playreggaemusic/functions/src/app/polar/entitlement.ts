@@ -11,17 +11,20 @@ import type { Firestore } from "firebase-admin/firestore";
 import { getOrder, getTrackMaster, listOrders, listTracksByRelease } from "../label/store";
 import { getProduct } from "../label/store";
 import type { Order } from "../label/index";
+import {
+  getLicenseTerms,
+  PERSONAL_DOWNLOAD_KIND,
+  PERSONAL_LICENSE_PLACEHOLDER,
+} from "../legal/license";
 
 /**
- * PLACEHOLDER license string — NOT binding wording. The label owner must supply
- * the final, legally reviewed personal-listening license text before go-live.
- * Used as user-facing copy on downloads/entitlements until then.
+ * PLACEHOLDER license string — NOT binding wording. Relocated to the legal layer
+ * (app/legal/license.ts) in P2B09; re-exported here for backward compatibility
+ * so existing importers keep working. The personal-download license text is now
+ * read structurally via `getLicenseTerms` (which falls back to this placeholder
+ * until the owner supplies binding wording via `setLicenseTerms`).
  */
-export const PERSONAL_LICENSE_PLACEHOLDER =
-  "[PLACEHOLDER LICENSE — owner to supply binding wording before go-live] " +
-  "Personal-listening license only: this AI-generated recording is licensed to " +
-  "you for personal, non-commercial listening. No redistribution, public " +
-  "performance, broadcast, or commercial use is granted.";
+export { PERSONAL_LICENSE_PLACEHOLDER };
 
 /** Short AI-generated disclosure included with every download (manifest §8.4). */
 export const AI_GENERATED_DISCLOSURE =
@@ -126,12 +129,17 @@ export async function mintDownloadUrl(
   const expiresAtMs = Date.now() + ttlMs;
   const url = await signer(master.masterPath, expiresAtMs);
 
+  // Read the personal-download license text structurally. Defaults to the
+  // CLEARLY-MARKED placeholder until the owner supplies binding wording via
+  // setLicenseTerms — so existing behavior (placeholder text) holds.
+  const licenseTerms = await getLicenseTerms(PERSONAL_DOWNLOAD_KIND, db);
+
   return {
     url,
     trackId,
     expiresAt: new Date(expiresAtMs).toISOString(),
     aiGenerated: true,
     disclosure: AI_GENERATED_DISCLOSURE,
-    license: PERSONAL_LICENSE_PLACEHOLDER,
+    license: licenseTerms.bodyText,
   };
 }

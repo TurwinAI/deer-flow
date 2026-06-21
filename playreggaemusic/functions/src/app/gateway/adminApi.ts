@@ -115,6 +115,9 @@ import {
 } from "../analytics/ingest";
 import { generateInsightReport, type InsightReport } from "../analytics/insights";
 import { recommendNextActions, listRecommendations, type AnrRecommendation } from "../analytics/anr";
+import { registerAgreement, activateAgreement, type ArtistAgreement } from "../legal/contracts";
+import { setLicenseTerms, type LicenseTerms } from "../legal/license";
+import { checkReleaseCompliance, type ComplianceResult } from "../legal/compliance";
 import { FakeScheduler, type Scheduler } from "../../harness/orchestration";
 import { buildLabelAgent } from "../agent/leadAgent";
 import { createChatModel } from "../../harness/models";
@@ -415,6 +418,30 @@ const generateInsightsApiSchema = z.object({
 const recommendNextActionsApiSchema = z.object({
   period: z.string().min(1),
   priorPeriod: z.string().min(1).optional(),
+});
+
+// Legal/Contracts/Compliance (P2B09, F10) schemas. All NON-consequential
+// (record contracts/terms or run a read-only check).
+const registerAgreementApiSchema = z.object({
+  artistId: z.string().min(1),
+  termMonths: z.number().int().positive(),
+  royaltyRatePct: z.number().min(0).max(100),
+  ownershipNote: z.string().min(1),
+  aiGenerationConsent: z.boolean().optional(),
+  signedAt: z.string().min(1).optional(),
+});
+
+const activateAgreementApiSchema = z.object({
+  artistId: z.string().min(1),
+});
+
+const setLicenseTermsApiSchema = z.object({
+  kind: z.string().min(1),
+  bodyText: z.string().min(1),
+});
+
+const checkComplianceApiSchema = z.object({
+  releaseId: z.string().min(1),
 });
 
 function parse<T>(schema: z.ZodType<T>, data: unknown): T {
@@ -1160,6 +1187,70 @@ export async function handleListRecommendations(
 }
 
 // ---------------------------------------------------------------------------
+// Legal/Contracts/Compliance (P2B09, F10) — admin-guarded. All NON-consequential:
+// register/activate an artist agreement, set OWNER-SUPPLIED binding license terms
+// (flips isPlaceholder:false), and run the read-only release compliance check.
+// Agreements + license terms are admin-only collections (deny ALL client access
+// in firestore.rules); the admin SDK bypasses rules so these handlers persist.
+// ---------------------------------------------------------------------------
+
+/** Register (create/overwrite) an artist agreement in DRAFT status. */
+export async function handleRegisterAgreement(
+  req: AdminRequest<unknown>,
+): Promise<ArtistAgreement> {
+  assertAdmin(req.auth);
+  const input = parse(registerAgreementApiSchema, req.data);
+  try {
+    return await registerAgreement({
+      artistId: input.artistId,
+      termMonths: input.termMonths,
+      royaltyRatePct: input.royaltyRatePct,
+      ownershipNote: input.ownershipNote,
+      aiGenerationConsent: input.aiGenerationConsent,
+      signedAt: input.signedAt,
+    });
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/** Activate an artist agreement (status "active"). Unknown-agreement -> invalid-argument. */
+export async function handleActivateAgreement(
+  req: AdminRequest<unknown>,
+): Promise<ArtistAgreement> {
+  assertAdmin(req.auth);
+  const input = parse(activateAgreementApiSchema, req.data);
+  try {
+    return await activateAgreement(input.artistId);
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/**
+ * Set OWNER-SUPPLIED binding license terms for a kind (e.g. "personal_download").
+ * Flips isPlaceholder:false. Empty wording -> invalid-argument.
+ */
+export async function handleSetLicenseTerms(req: AdminRequest<unknown>): Promise<LicenseTerms> {
+  assertAdmin(req.auth);
+  const input = parse(setLicenseTermsApiSchema, req.data);
+  try {
+    return await setLicenseTerms(input.kind, input.bodyText);
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/** Run the read-only pre-distribution compliance check for a release. */
+export async function handleCheckReleaseCompliance(
+  req: AdminRequest<unknown>,
+): Promise<ComplianceResult> {
+  assertAdmin(req.auth);
+  const input = parse(checkComplianceApiSchema, req.data);
+  return checkReleaseCompliance(input.releaseId);
+}
+
+// ---------------------------------------------------------------------------
 // Callable bindings — thin adapters from CallableRequest to the pure handlers.
 // ---------------------------------------------------------------------------
 
@@ -1300,4 +1391,20 @@ export const adminRecommendNextActions = onCall((request) =>
 );
 export const adminListRecommendations = onCall((request) =>
   handleListRecommendations(toAdminRequest(request)),
+);
+
+// Legal/Contracts/Compliance callables (P2B09, F10). All admin-guarded; no
+// secrets needed (no live/consequential action — records contracts/terms or runs
+// a read-only compliance check).
+export const adminRegisterAgreement = onCall((request) =>
+  handleRegisterAgreement(toAdminRequest(request)),
+);
+export const adminActivateAgreement = onCall((request) =>
+  handleActivateAgreement(toAdminRequest(request)),
+);
+export const adminSetLicenseTerms = onCall((request) =>
+  handleSetLicenseTerms(toAdminRequest(request)),
+);
+export const adminCheckReleaseCompliance = onCall((request) =>
+  handleCheckReleaseCompliance(toAdminRequest(request)),
 );

@@ -53,6 +53,10 @@ export {
   adminGenerateInsights,
   adminRecommendNextActions,
   adminListRecommendations,
+  adminRegisterAgreement,
+  adminActivateAgreement,
+  adminSetLicenseTerms,
+  adminCheckReleaseCompliance,
   runAgent,
 } from "./app/gateway/adminApi";
 

@@ -153,6 +153,18 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Legal/Contracts/Compliance (P2B09, F10). Artist agreements carry SENSITIVE
+    // commercial terms + personal AI-generation consent; structured license terms
+    // are operational/owner-supplied wording. Both are admin-only — deny ALL
+    // client access. The admin SDK bypasses rules so the engine + admin callables
+    // still read/write; no client may read or write.
+    match /artist_agreements/{doc=**} {
+      allow read, write: if false;
+    }
+    match /license_terms/{doc=**} {
+      allow read, write: if false;
+    }
+
     // Engine collections: deny ALL client access. The admin SDK bypasses
     // rules, so the runtime is unaffected; no client may read or write.
     match /threads/{doc=**} {

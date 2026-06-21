@@ -21,6 +21,7 @@
  */
 import type { Firestore } from "firebase-admin/firestore";
 import { getRelease, listTracksByRelease, getArtist } from "../label/store";
+import { checkReleaseCompliance } from "../legal/compliance";
 import { buildErnMessage, validateErn } from "./ddex";
 import type { DistributorClient } from "./client";
 import {
@@ -32,6 +33,9 @@ import {
 
 /** Error message thrown when deliverRelease is called without approval. */
 export const APPROVAL_REQUIRED_MESSAGE = "distribution requires approval";
+
+/** Message prefix thrown when deliverRelease is refused for non-compliance. */
+export const COMPLIANCE_FAILED_MESSAGE = "distribution refused — release is not compliant";
 
 /**
  * Schedule a release for distribution. Writes/merges a `distributions/{releaseId}`
@@ -75,13 +79,20 @@ export interface DeliverReleaseOptions {
 /**
  * Deliver a release to DSPs via the distributor (CONSEQUENTIAL).
  *
- * Refuses unless `approved === true` — throws `APPROVAL_REQUIRED_MESSAGE` BEFORE
- * building the ERN or calling the client, so an unapproved call performs no
- * network/distributor work at all. When approved:
- *   1. load the release + its tracks (+ artist for the display name),
- *   2. build + structurally validate the DDEX ERN (rejects bad UPC/ISRC),
- *   3. submit it to the injected client,
- *   4. mirror the returned deliveryId + status into the distribution record.
+ * Two hard preconditions fire BEFORE the ERN is built or the client is touched,
+ * so a refused call performs no network/distributor work at all:
+ *   1. APPROVAL GATE — refuses unless `approved === true` (throws
+ *      `APPROVAL_REQUIRED_MESSAGE`).
+ *   2. COMPLIANCE GATE (P2B09) — runs `checkReleaseCompliance` and refuses (throws
+ *      `COMPLIANCE_FAILED_MESSAGE` + the listed issues) unless the release is
+ *      compliant: AI-disclosure (aiGenerated + provenance per track), ownership
+ *      splits summing to 100, and an ACTIVE artist agreement with AI-generation
+ *      consent. This blocks an approved-but-non-compliant release from shipping.
+ * When both pass:
+ *   3. load the release + its tracks (+ artist for the display name),
+ *   4. build + structurally validate the DDEX ERN (rejects bad UPC/ISRC),
+ *   5. submit it to the injected client,
+ *   6. mirror the returned deliveryId + status into the distribution record.
  */
 export async function deliverRelease(
   releaseId: string,
@@ -93,6 +104,13 @@ export async function deliverRelease(
   }
 
   const { client, store } = options;
+
+  // -- COMPLIANCE GATE (P2B09) — refuse a non-compliant release even when
+  // approved, BEFORE building the ERN or touching the distributor. --------
+  const compliance = await checkReleaseCompliance(releaseId, store);
+  if (!compliance.compliant) {
+    throw new Error(`${COMPLIANCE_FAILED_MESSAGE}: ${compliance.issues.join("; ")}`);
+  }
 
   const release = await getRelease(releaseId, store);
   if (!release) {
