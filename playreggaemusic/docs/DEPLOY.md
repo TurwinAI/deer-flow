@@ -45,6 +45,40 @@ effect.
 5. Validate the full purchase flow in sandbox before switching to production
    keys/host.
 
+## 3b. Configure the Phase-2 label adapters (test-mode → live)
+
+Every Phase-2 external integration is an injectable adapter whose REAL impl reads
+a token from the environment and throws without it (the Fake impl is used in all
+gates). Supply each token as a Functions secret only when wiring that capability
+live; until then the system runs fully on Fakes.
+
+```bash
+firebase functions:secrets:set DISTRIBUTOR_API_TOKEN   # DSP delivery (DDEX) + DSP revenue
+firebase functions:secrets:set PRO_API_TOKEN           # PRO/MLC affiliation + publishing income
+firebase functions:secrets:set SOCIAL_API_TOKEN        # social posting
+firebase functions:secrets:set EMAIL_API_TOKEN         # email blasts
+firebase functions:secrets:set ADS_API_TOKEN           # paid-ad spend
+firebase functions:secrets:set PLAYLIST_API_TOKEN      # playlist pitching
+firebase functions:secrets:set DSP_STATS_API_TOKEN     # analytics ingestion
+```
+
+Also operator-side at go-live:
+
+- **Binding license + sync wording** — call `adminSetLicenseTerms` with the
+  legally-reviewed personal-download (and sync) wording (flips the placeholder
+  off; the compliance gate warns until you do).
+- **Active artist agreements** — register + activate each artist's agreement
+  (`adminRegisterAgreement` / `adminActivateAgreement`) with AI-generation
+  consent; the pre-distribution compliance gate refuses a release without one.
+- **Payout rail** — there is NO live payment rail; wire operator-supplied payout
+  creds before any payout executes (it stops at a documented no-money stub).
+- **Real PreviewEncoder (ffmpeg)** — production preview-clip generation needs a
+  real ffmpeg-backed `PreviewEncoder` (the build ships an unconfigured stub).
+- **Real Scheduler (Cloud Scheduler)** — autonomous scheduled runs use the
+  `FakeScheduler` in tests; wire `CloudScheduler` (Cloud Scheduler/PubSub) live.
+- **ERN XSD validation** — the ERN builder validates structurally; add full DDEX
+  ERN **XSD** validation against the distributor's required schema version.
+
 ## 4. Deploy
 
 ```bash

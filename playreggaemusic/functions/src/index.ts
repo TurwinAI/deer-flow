@@ -40,6 +40,8 @@ export {
   adminListOrders,
   adminScheduleRelease,
   adminDeliverRelease,
+  adminListDistributions,
+  adminListStatements,
   adminListPendingApprovals,
   adminApprove,
   adminListAudit,

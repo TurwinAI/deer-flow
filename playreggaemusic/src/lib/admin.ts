@@ -25,10 +25,16 @@ import {
 import {
   FIXTURE_AGENT_TRANSCRIPT,
   FIXTURE_ARTISTS,
+  FIXTURE_DISTRIBUTIONS,
   FIXTURE_ORDERS,
+  FIXTURE_PENDING_APPROVALS,
   FIXTURE_PRODUCTS,
   FIXTURE_RELEASES,
+  FIXTURE_ROYALTY_STATEMENTS,
   fixturesEnabled,
+  type DistributionRow,
+  type PendingApproval,
+  type RoyaltyStatementRow,
 } from "./fixtures";
 
 export interface TranscriptEntry {
@@ -61,12 +67,18 @@ export interface ProductInput {
   releaseId?: string;
 }
 
+// Re-export the human-in-the-loop view shapes so pages import them from the data
+// layer (which they mock) rather than the fixtures module directly.
+export type { PendingApproval, DistributionRow, RoyaltyStatementRow };
+
 // -- In-memory fixture store (mutable copies; reset per page load) -----------
 
 const memArtists: Artist[] = FIXTURE_ARTISTS.map((a) => ({ ...a }));
 const memReleases: Release[] = FIXTURE_RELEASES.map((r) => ({ ...r }));
 const memProducts: Product[] = FIXTURE_PRODUCTS.map((p) => ({ ...p }));
 const memOrders: Order[] = FIXTURE_ORDERS.map((o) => ({ ...o }));
+// Pending approvals are mutated in place so "Approve" removes one offline.
+const memPendingApprovals: PendingApproval[] = FIXTURE_PENDING_APPROVALS.map((p) => ({ ...p }));
 
 function upsert<T extends { id: string }>(list: T[], item: T): void {
   const i = list.findIndex((x) => x.id === item.id);
@@ -129,6 +141,56 @@ export async function createProduct(input: ProductInput): Promise<Product> {
 export async function listOrders(): Promise<Order[]> {
   if (fixturesEnabled()) return memOrders.map((o) => ({ ...o }));
   return call("adminListOrders", {});
+}
+
+// -- Human-in-the-loop: pending approvals (P2B10) ----------------------------
+
+/**
+ * List the consequential agent actions BLOCKED pending the owner's approval.
+ * Fixtures mode reads the in-memory store; production calls the admin-guarded
+ * `adminListPendingApprovals` callable.
+ */
+export async function listPendingApprovals(): Promise<PendingApproval[]> {
+  if (fixturesEnabled()) return memPendingApprovals.map((p) => ({ ...p }));
+  return call("adminListPendingApprovals", {});
+}
+
+/**
+ * Approve one pending consequential action (the human-in-the-loop decision).
+ * Fixtures mode removes it from the in-memory list so the UI reflects approval
+ * offline; production calls the admin-guarded `adminApprove` callable.
+ */
+export async function approvePending(approvalId: string): Promise<void> {
+  if (fixturesEnabled()) {
+    const i = memPendingApprovals.findIndex((p) => p.approvalId === approvalId);
+    if (i >= 0) memPendingApprovals.splice(i, 1);
+    return;
+  }
+  await call("adminApprove", { approvalId });
+}
+
+// -- Distribution status (P2B10) ---------------------------------------------
+
+/**
+ * List releases with their DSP distribution status. Fixtures mode reads the
+ * in-memory store; production calls the admin-guarded `adminListDistributions`
+ * callable.
+ */
+export async function listDistributions(): Promise<DistributionRow[]> {
+  if (fixturesEnabled()) return FIXTURE_DISTRIBUTIONS.map((d) => ({ ...d }));
+  return call("adminListDistributions", {});
+}
+
+// -- Royalty statements (P2B10) ----------------------------------------------
+
+/**
+ * List per-artist royalty statements (gross/deductions/recoupment/net). Fixtures
+ * mode reads the in-memory store; production calls the admin-guarded
+ * `adminListStatements` callable.
+ */
+export async function listRoyaltyStatements(): Promise<RoyaltyStatementRow[]> {
+  if (fixturesEnabled()) return FIXTURE_ROYALTY_STATEMENTS.map((s) => ({ ...s }));
+  return call("adminListStatements", {});
 }
 
 // -- Agent run ---------------------------------------------------------------

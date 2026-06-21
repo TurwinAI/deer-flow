@@ -25,6 +25,7 @@ import {
   createArtist,
   createProduct,
   createRelease,
+  getRelease,
   listOrders,
   setProvenance,
   setReleaseIdentifiers,
@@ -51,7 +52,7 @@ import type {
   Track,
 } from "../label";
 import { deliverRelease, scheduleRelease } from "../distribution/release";
-import type { DistributionRecord } from "../distribution/store";
+import { listDistributionRecords, type DistributionRecord } from "../distribution/store";
 import { DdexDistributorClient, type DistributorClient } from "../distribution/client";
 import {
   PolarRevenueSource,
@@ -713,6 +714,29 @@ export async function handleDeliverRelease(
   }
 }
 
+/** A distribution-status row for the admin view: the record + its release title. */
+export interface DistributionStatusRow extends DistributionRecord {
+  /** The release's display title (joined from the catalog), if known. */
+  title: string;
+}
+
+/**
+ * List all release distribution records, joined with each release's title, for
+ * the admin distribution-status view (read-only). Admin-guarded.
+ */
+export async function handleListDistributions(
+  req: AdminRequest<unknown>,
+): Promise<DistributionStatusRow[]> {
+  assertAdmin(req.auth);
+  const records = await listDistributionRecords();
+  const rows: DistributionStatusRow[] = [];
+  for (const record of records) {
+    const release = await getRelease(record.releaseId);
+    rows.push({ ...record, title: release?.title ?? record.releaseId });
+  }
+  return rows;
+}
+
 /** A transcript line surfaced in the agent console. */
 export interface TranscriptEntry {
   role: "system" | "human" | "ai" | "tool";
@@ -1291,6 +1315,10 @@ const distributorApiToken = defineSecret("DISTRIBUTOR_API_TOKEN");
 
 export const adminDeliverRelease = onCall({ secrets: [distributorApiToken] }, (request) =>
   handleDeliverRelease(toAdminRequest(request)),
+);
+// `adminListDistributions` backs the admin distribution-status view (read-only).
+export const adminListDistributions = onCall((request) =>
+  handleListDistributions(toAdminRequest(request)),
 );
 // `runAgent` invokes the Claude-backed model factory, which reads
 // ANTHROPIC_API_KEY from the environment — bind it so the secret is present at

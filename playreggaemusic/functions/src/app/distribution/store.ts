@@ -69,6 +69,12 @@ export async function getDistributionRecord(
   return snap.exists ? (snap.data() as DistributionRecord) : null;
 }
 
+/** List ALL distribution records (admin SDK). For the admin status view. */
+export async function listDistributionRecords(store?: Firestore): Promise<DistributionRecord[]> {
+  const snap = await db(store).collection(DISTRIBUTIONS).get();
+  return snap.docs.map((d) => d.data() as DistributionRecord);
+}
+
 /** Merge a partial update onto an existing distribution record. */
 export async function updateDistribution(
   releaseId: string,
