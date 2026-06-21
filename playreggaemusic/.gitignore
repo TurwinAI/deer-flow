@@ -1,0 +1,14 @@
+node_modules/
+dist/
+functions/lib/
+coverage/
+*.local
+.firebase/
+.env
+.env.*
+*.log
+.DS_Store
+.vitest/
+test-results/
+playwright-report/
+.playwright/

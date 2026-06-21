@@ -1,0 +1,18 @@
+rules_version = '2';
+
+// B01 baseline. Preview clips are public-read; masters are private and only
+// delivered via entitlement-gated signed URLs (B06). Full rules in B03/B06.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /previews/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.admin == true;
+    }
+    match /masters/{allPaths=**} {
+      allow read, write: if false;
+    }
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

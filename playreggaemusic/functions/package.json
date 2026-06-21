@@ -1,0 +1,38 @@
+{
+  "name": "playreggaemusic-functions",
+  "private": true,
+  "version": "0.1.0",
+  "description": "PlayReggaeMusic.ai — Cloud Functions: agent runtime host + APIs",
+  "main": "lib/index.js",
+  "engines": {
+    "node": "20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --ext .ts",
+    "test": "vitest run",
+    "test:emulator": "firebase emulators:exec --only firestore,storage --project playreggaemusic-dev 'vitest run'"
+  },
+  "dependencies": {
+    "@langchain/anthropic": "^0.3.11",
+    "@langchain/core": "^0.3.40",
+    "@langchain/langgraph": "^0.2.44",
+    "@langchain/langgraph-checkpoint": "^0.0.18",
+    "fast-xml-parser": "4.5.6",
+    "firebase-admin": "^12.6.0",
+    "firebase-functions": "^6.1.0",
+    "gray-matter": "^4.0.3",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.11.1",
+    "@firebase/rules-unit-testing": "^3.0.4",
+    "@types/node": "^20.16.10",
+    "firebase": "^10.14.1",
+    "eslint": "^9.11.1",
+    "typescript": "^5.6.2",
+    "typescript-eslint": "^8.8.0",
+    "vitest": "^2.1.2"
+  }
+}
