@@ -59,6 +59,25 @@ export {
   adminActivateAgreement,
   adminSetLicenseTerms,
   adminCheckReleaseCompliance,
+  // P2B01 identifiers/rights
+  adminSetIdentifiers,
+  adminSetOwnershipSplits,
+  // P2B02 assets/provenance
+  adminIngestMaster,
+  adminGeneratePreview,
+  adminSetProvenance,
+  // P2B05 finance
+  adminIngestRevenue,
+  adminGenerateStatement,
+  adminProposePayout,
+  // P2B06 publishing + sync
+  adminRegisterWork,
+  adminSetWriterSplits,
+  adminRegisterProAffiliation,
+  adminAddToSyncCatalog,
+  adminRequestSyncLicense,
+  adminClearSyncLicense,
+  adminIssueSyncLicense,
   runAgent,
 } from "./app/gateway/adminApi";
 
