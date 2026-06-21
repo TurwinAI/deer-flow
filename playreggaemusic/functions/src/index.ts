@@ -15,7 +15,14 @@
  */
 import { onRequest } from "firebase-functions/v2/https";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { defineSecret } from "firebase-functions/params";
 import { gatewayInfo } from "./app";
+
+// Functions v2 secrets must be BOUND to a trigger via the `secrets` option, or
+// the runtime sees `process.env.<NAME>` as undefined (Secret Manager values are
+// not auto-injected). Declared here and attached to the triggers below.
+const polarAccessToken = defineSecret("POLAR_ACCESS_TOKEN");
+const polarWebhookSecret = defineSecret("POLAR_WEBHOOK_SECRET");
 import { PolarSdkClient } from "./app/polar/client";
 import { createCheckoutForProduct } from "./app/polar/checkout";
 import {
@@ -39,7 +46,7 @@ export const health = onRequest((_req, res) => {
 });
 
 /** Callable: { productId } -> { checkoutUrl, checkoutId }. */
-export const createCheckout = onCall(async (request) => {
+export const createCheckout = onCall({ secrets: [polarAccessToken] }, async (request) => {
   const productId = (request.data as { productId?: unknown })?.productId;
   if (typeof productId !== "string" || productId.length === 0) {
     throw new HttpsError("invalid-argument", "productId is required");
@@ -50,7 +57,7 @@ export const createCheckout = onCall(async (request) => {
 });
 
 /** Webhook receiver: verify signature, then handle. */
-export const polarWebhook = onRequest(async (req, res) => {
+export const polarWebhook = onRequest({ secrets: [polarWebhookSecret] }, async (req, res) => {
   const secret = process.env.POLAR_WEBHOOK_SECRET ?? "";
   // Standard Webhooks requires the EXACT raw bytes that were signed.
   const rawBody: string =

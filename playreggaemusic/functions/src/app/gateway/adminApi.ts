@@ -17,6 +17,7 @@
  * handoff (manifest §9 approval gate).
  */
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
+import { defineSecret } from "firebase-functions/params";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
 import { z } from "zod";
@@ -225,4 +226,11 @@ export const adminCreateArtist = onCall((request) => handleCreateArtist(toAdminR
 export const adminCreateRelease = onCall((request) => handleCreateRelease(toAdminRequest(request)));
 export const adminCreateProduct = onCall((request) => handleCreateProduct(toAdminRequest(request)));
 export const adminListOrders = onCall((request) => handleListOrders(toAdminRequest(request)));
-export const runAgent = onCall((request) => handleRunAgent(toAdminRequest(request)));
+// `runAgent` invokes the Claude-backed model factory, which reads
+// ANTHROPIC_API_KEY from the environment — bind it so the secret is present at
+// runtime (Functions v2 does not auto-inject Secret Manager values).
+const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
+
+export const runAgent = onCall({ secrets: [anthropicApiKey] }, (request) =>
+  handleRunAgent(toAdminRequest(request)),
+);
