@@ -43,6 +43,12 @@ export {
   adminListPendingApprovals,
   adminApprove,
   adminListAudit,
+  adminPlanCampaign,
+  adminScheduleCampaign,
+  adminListCampaigns,
+  adminPublishSocialPost,
+  adminSendEmailBlast,
+  adminMarketingSpend,
   runAgent,
 } from "./app/gateway/adminApi";
 

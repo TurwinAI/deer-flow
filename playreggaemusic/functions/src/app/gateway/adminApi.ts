@@ -87,6 +87,25 @@ import {
   type SyncCatalogEntry,
   type SyncLicense,
 } from "../publishing/sync";
+import {
+  planAndSaveCampaign,
+  listCampaigns,
+  recordMarketingEvent,
+  type Campaign,
+} from "../marketing/campaign";
+import { scheduleCampaign, type ScheduleCampaignResult } from "../marketing/scheduling";
+import {
+  RealSocialChannel,
+  RealEmailChannel,
+  RealAdChannel,
+  type SocialChannel,
+  type EmailChannel,
+  type AdChannel,
+  type SocialPostResult,
+  type EmailBlastResult,
+  type AdSpendResult,
+} from "../marketing/channels";
+import { FakeScheduler, type Scheduler } from "../../harness/orchestration";
 import { buildLabelAgent } from "../agent/leadAgent";
 import { createChatModel } from "../../harness/models";
 import type { ChatModelLike } from "../../harness/runtime";
@@ -316,6 +335,44 @@ const clearSyncLicenseApiSchema = z.object({
 const issueSyncLicenseApiSchema = z.object({
   licenseId: z.string().min(1),
   // The admin explicitly approving this CONSEQUENTIAL, binding action. Required true.
+  approved: z.literal(true),
+});
+
+// Marketing & promotion (P2B07, F5) schemas.
+const planCampaignApiSchema = z.object({
+  releaseId: z.string().min(1),
+  budgetCents: z.number().int().nonnegative().optional(),
+  campaignId: z.string().min(1).optional(),
+});
+
+const scheduleCampaignApiSchema = z.object({
+  campaignId: z.string().min(1),
+  baseTime: z.string().min(1),
+  cadenceDays: z.number().int().positive().optional(),
+});
+
+const publishSocialPostApiSchema = z.object({
+  platform: z.string().min(1),
+  message: z.string().min(1),
+  assetPath: z.string().min(1).optional(),
+  // The admin explicitly approving this CONSEQUENTIAL public broadcast. Required true.
+  approved: z.literal(true),
+});
+
+const sendEmailBlastApiSchema = z.object({
+  segment: z.string().min(1),
+  subject: z.string().min(1),
+  body: z.string().min(1),
+  // The admin explicitly approving this CONSEQUENTIAL outward send. Required true.
+  approved: z.literal(true),
+});
+
+const marketingSpendApiSchema = z.object({
+  platform: z.string().min(1),
+  budgetCents: z.number().int().positive(),
+  currency: z.string().min(1),
+  objective: z.string().min(1),
+  // The admin explicitly approving this CONSEQUENTIAL spend. Required true.
   approved: z.literal(true),
 });
 
@@ -872,6 +929,141 @@ export async function handleIssueSyncLicense(req: AdminRequest<unknown>): Promis
 }
 
 // ---------------------------------------------------------------------------
+// Marketing & promotion (P2B07, F5) — admin-guarded campaign planning +
+// scheduling (NON-consequential, no outward effect) and the CONSEQUENTIAL
+// outward/spending actions (publish/email/spend), each gated on the admin
+// explicitly approving (`approved: true`), mirroring adminDeliverRelease. The
+// channels are INJECTED; production passes the Real* stubs (which throw without
+// operator-supplied creds at handoff), tests pass Fake channels — NO live
+// social/email/ad call occurs in any test. Every fired outward action is logged
+// to the admin-only marketing_events sent-log.
+// ---------------------------------------------------------------------------
+
+/** Plan + persist a release campaign (NON-consequential; no outward effect). */
+export async function handlePlanCampaign(req: AdminRequest<unknown>): Promise<Campaign> {
+  assertAdmin(req.auth);
+  const input = parse(planCampaignApiSchema, req.data);
+  try {
+    return await planAndSaveCampaign(input.releaseId, {
+      budgetCents: input.budgetCents,
+      campaignId: input.campaignId,
+    });
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/**
+ * Schedule a planned campaign's steps via the injected scheduler (NON-
+ * consequential; records scheduled runs + step times, no outward effect).
+ * Production defaults to a FakeScheduler (the real Cloud Scheduler is wired at
+ * handoff); tests inject a FakeScheduler.
+ */
+export async function handleScheduleCampaign(
+  req: AdminRequest<unknown>,
+  scheduler: Scheduler = new FakeScheduler(),
+): Promise<ScheduleCampaignResult> {
+  assertAdmin(req.auth);
+  const input = parse(scheduleCampaignApiSchema, req.data);
+  try {
+    return await scheduleCampaign(input.campaignId, scheduler, {
+      baseTime: input.baseTime,
+      cadenceDays: input.cadenceDays,
+    });
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/** List all campaigns (admin-only). */
+export async function handleListCampaigns(req: AdminRequest<unknown>): Promise<Campaign[]> {
+  assertAdmin(req.auth);
+  return listCampaigns();
+}
+
+/**
+ * Publish a PUBLIC social post (CONSEQUENTIAL). The admin passing `approved:
+ * true` represents the human-in-the-loop approval; the schema requires it (a
+ * missing/false `approved` is rejected as `invalid-argument` BEFORE any post).
+ * The channel is injected (Real* in production — throws without creds; Fake in
+ * tests). Logs a marketing_events sent-log entry on success.
+ */
+export async function handlePublishSocialPost(
+  req: AdminRequest<unknown>,
+  channel: SocialChannel = new RealSocialChannel(),
+): Promise<SocialPostResult> {
+  assertAdmin(req.auth);
+  const input = parse(publishSocialPostApiSchema, req.data);
+  const result = await channel.post({
+    platform: input.platform,
+    message: input.message,
+    assetPath: input.assetPath,
+  });
+  await recordMarketingEvent({
+    id: `social__${result.postId}`,
+    kind: "social_post",
+    ref: result.postId,
+    summary: `social post to ${result.platform}`,
+    occurredAt: new Date().toISOString(),
+  });
+  return result;
+}
+
+/**
+ * Send an email blast (CONSEQUENTIAL). `approved: true` is the human-in-the-loop
+ * approval; the schema requires it. The channel is injected (Real* in production
+ * — throws without creds; Fake in tests). Logs a sent-log entry on success.
+ */
+export async function handleSendEmailBlast(
+  req: AdminRequest<unknown>,
+  channel: EmailChannel = new RealEmailChannel(),
+): Promise<EmailBlastResult> {
+  assertAdmin(req.auth);
+  const input = parse(sendEmailBlastApiSchema, req.data);
+  const result = await channel.send({
+    segment: input.segment,
+    subject: input.subject,
+    body: input.body,
+  });
+  await recordMarketingEvent({
+    id: `email__${result.sendId}`,
+    kind: "email_blast",
+    ref: result.sendId,
+    summary: `email blast to ${result.segment}`,
+    occurredAt: new Date().toISOString(),
+  });
+  return result;
+}
+
+/**
+ * Place paid-ad spend (CONSEQUENTIAL — spends money). `approved: true` is the
+ * human-in-the-loop approval; the schema requires it. The channel is injected
+ * (Real* in production — throws without creds; Fake in tests). Logs a sent-log
+ * entry on success.
+ */
+export async function handleMarketingSpend(
+  req: AdminRequest<unknown>,
+  channel: AdChannel = new RealAdChannel(),
+): Promise<AdSpendResult> {
+  assertAdmin(req.auth);
+  const input = parse(marketingSpendApiSchema, req.data);
+  const result = await channel.spend({
+    platform: input.platform,
+    budgetCents: input.budgetCents,
+    currency: input.currency,
+    objective: input.objective,
+  });
+  await recordMarketingEvent({
+    id: `ad__${result.adOrderId}`,
+    kind: "ad_spend",
+    ref: result.adOrderId,
+    summary: `ad spend on ${result.platform} (${result.budgetCents} ${result.currency})`,
+    occurredAt: new Date().toISOString(),
+  });
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Callable bindings — thin adapters from CallableRequest to the pure handlers.
 // ---------------------------------------------------------------------------
 
@@ -969,4 +1161,31 @@ export const adminClearSyncLicense = onCall((request) =>
 );
 export const adminIssueSyncLicense = onCall((request) =>
   handleIssueSyncLicense(toAdminRequest(request)),
+);
+
+// Marketing & promotion callables (P2B07, F5). Planning/scheduling/listing are
+// admin-guarded with no secrets (no outward effect). The CONSEQUENTIAL
+// publish/email/spend callables bind the channel secrets so the Real* channels
+// can read them at runtime (operator-supplied at handoff) — they throw without
+// them, and NO live social/email/ad call occurs in any test (unit tests inject
+// Fake channels).
+const socialApiToken = defineSecret("SOCIAL_API_TOKEN");
+const emailApiToken = defineSecret("EMAIL_API_TOKEN");
+const adsApiToken = defineSecret("ADS_API_TOKEN");
+
+export const adminPlanCampaign = onCall((request) => handlePlanCampaign(toAdminRequest(request)));
+export const adminScheduleCampaign = onCall((request) =>
+  handleScheduleCampaign(toAdminRequest(request)),
+);
+export const adminListCampaigns = onCall((request) =>
+  handleListCampaigns(toAdminRequest(request)),
+);
+export const adminPublishSocialPost = onCall({ secrets: [socialApiToken] }, (request) =>
+  handlePublishSocialPost(toAdminRequest(request)),
+);
+export const adminSendEmailBlast = onCall({ secrets: [emailApiToken] }, (request) =>
+  handleSendEmailBlast(toAdminRequest(request)),
+);
+export const adminMarketingSpend = onCall({ secrets: [adsApiToken] }, (request) =>
+  handleMarketingSpend(toAdminRequest(request)),
 );

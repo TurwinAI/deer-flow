@@ -127,6 +127,17 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Marketing & promotion (P2B07, F5): release campaigns and the sent-log of
+    // outward marketing events (social posts / email blasts / ad spend). Both are
+    // OPERATIONAL/admin-only — deny ALL client access. The admin SDK bypasses
+    // rules so the engine + admin callables still read/write; no client may.
+    match /campaigns/{doc=**} {
+      allow read, write: if false;
+    }
+    match /marketing_events/{doc=**} {
+      allow read, write: if false;
+    }
+
     // Engine collections: deny ALL client access. The admin SDK bypasses
     // rules, so the runtime is unaffected; no client may read or write.
     match /threads/{doc=**} {

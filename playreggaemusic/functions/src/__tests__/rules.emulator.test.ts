@@ -118,6 +118,17 @@ describe.skipIf(RUN)("firestore.rules (emulator)", () => {
         status: "issued",
         feeCents: 500000,
       });
+      // P2B07 marketing — campaigns + the outward sent-log are admin-only.
+      await setDoc(doc(db, "campaigns", "campaign-foundation-stones"), {
+        id: "campaign-foundation-stones",
+        releaseId: "foundation-stones",
+        status: "planned",
+      });
+      await setDoc(doc(db, "marketing_events", "social__fake-social-1"), {
+        id: "social__fake-social-1",
+        kind: "social_post",
+        ref: "fake-social-1",
+      });
     });
   });
 
@@ -437,6 +448,32 @@ describe.skipIf(RUN)("firestore.rules (emulator)", () => {
     const db = testEnv.authenticatedContext("fan").firestore();
     await assertFails(getDoc(doc(db, "sync_licenses", "lic1")));
     await assertFails(setDoc(doc(db, "sync_licenses", "evil2"), { status: "issued" }));
+  });
+
+  // -- P2B07 marketing: campaigns + marketing_events admin-only (deny client).
+
+  it("anon CANNOT read or write campaigns", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, "campaigns", "campaign-foundation-stones")));
+    await assertFails(setDoc(doc(db, "campaigns", "evil"), { releaseId: "hax" }));
+  });
+
+  it("non-admin authenticated user CANNOT read or write campaigns", async () => {
+    const db = testEnv.authenticatedContext("fan").firestore();
+    await assertFails(getDoc(doc(db, "campaigns", "campaign-foundation-stones")));
+    await assertFails(setDoc(doc(db, "campaigns", "evil2"), { releaseId: "hax" }));
+  });
+
+  it("anon CANNOT read or write marketing_events (sent-log stays private)", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, "marketing_events", "social__fake-social-1")));
+    await assertFails(setDoc(doc(db, "marketing_events", "evil"), { kind: "social_post" }));
+  });
+
+  it("non-admin authenticated user CANNOT read or write marketing_events", async () => {
+    const db = testEnv.authenticatedContext("fan").firestore();
+    await assertFails(getDoc(doc(db, "marketing_events", "social__fake-social-1")));
+    await assertFails(setDoc(doc(db, "marketing_events", "evil2"), { kind: "social_post" }));
   });
 
   it("expectations registered", () => {

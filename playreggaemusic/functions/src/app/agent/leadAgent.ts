@@ -26,6 +26,10 @@ import { getLabelTools } from "../label/tools";
 import { getDistributionTools } from "../distribution/tools";
 import { getFinanceTools } from "../finance/tools";
 import { getPublishingTools } from "../publishing/tools";
+import { getMarketingTools } from "../marketing/tools";
+import type { SocialChannel, EmailChannel, AdChannel } from "../marketing/channels";
+import { FakeScheduler } from "../../harness/orchestration";
+import type { Scheduler } from "../../harness/orchestration";
 import type { ProRegistrar } from "../publishing/pro";
 import type { ProductReleaseMap } from "../finance/revenue";
 import { createCheckoutForProduct } from "../polar/checkout";
@@ -47,18 +51,29 @@ import type { PolarClient } from "../polar/client";
  * `initiate_payout` (P2B05, F7) IS exposed to the agent (finance tools) and is
  * the live consequential payout action: it is gated here so it cannot execute
  * without human approval, and even an approved call reaches only a documented
- * stub (no live payment rail). `marketing_spend` stays reserved for P2B07.
+ * stub (no live payment rail).
  *
  * `issue_sync_license` (P2B06, F9) IS exposed to the agent (publishing tools)
  * and is the binding sync-licensing commitment: it is gated here so the agent
  * cannot issue a license without explicit human approval. Even an approved call
  * stamps only a CLEARLY-MARKED placeholder license text (owner supplies binding
  * wording before go-live).
+ *
+ * `publish_social_post` / `send_email_blast` / `marketing_spend` (P2B07, F5) ARE
+ * exposed to the agent (marketing tools) and are the OUTWARD/SPENDING marketing
+ * actions: public posting, email sends, and paid-ad spend. All three are gated
+ * here so the agent cannot broadcast or spend without explicit human approval;
+ * even an approved call reaches only a Fake channel that records the call and
+ * makes no live network request (live channels are owner-side at handoff). The
+ * marketing planning/drafting tools (plan_campaign, generate_campaign_copy,
+ * schedule_campaign) are deliberately NOT gated — they have no outward effect.
  */
 export const CONSEQUENTIAL_TOOLS: readonly string[] = [
   "deliver_release",
   "initiate_payout",
   "marketing_spend",
+  "publish_social_post",
+  "send_email_blast",
   "issue_sync_license",
 ];
 
@@ -129,6 +144,21 @@ export interface BuildLabelAgentDeps {
    */
   proRegistrar?: ProRegistrar;
   /**
+   * Scheduler backing the marketing `schedule_campaign` tool (P2B07). Injected
+   * so the autonomy gate uses a FakeScheduler (no live infra). Defaults to a
+   * FakeScheduler when omitted.
+   */
+  scheduler?: Scheduler;
+  /**
+   * Marketing channel adapters (P2B07) backing the CONSEQUENTIAL marketing tools
+   * (publish_social_post / send_email_blast / marketing_spend). Injected so the
+   * autonomy gate uses Fake channels (no live social/email/ad call). Default to
+   * Fake channels when omitted.
+   */
+  socialChannel?: SocialChannel;
+  emailChannel?: EmailChannel;
+  adChannel?: AdChannel;
+  /**
    * P2B04 ApprovalGate wiring. When supplied, the agent's tool execution passes
    * through the generic ApprovalGate: consequential calls (CONSEQUENTIAL_TOOLS)
    * are blocked pending approval and EVERY tool call is audited. The run context
@@ -172,6 +202,10 @@ export function buildLabelAgent({
   polarClient,
   productReleaseMap = {},
   proRegistrar,
+  scheduler = new FakeScheduler(),
+  socialChannel,
+  emailChannel,
+  adChannel,
   approval,
 }: BuildLabelAgentDeps): LabelAgent {
   const planState = new PlanState();
@@ -181,6 +215,7 @@ export function buildLabelAgent({
     ...getDistributionTools(),
     ...getFinanceTools(productReleaseMap),
     ...getPublishingTools(proRegistrar),
+    ...getMarketingTools({ scheduler, socialChannel, emailChannel, adChannel }),
     buildWritePlanTool(planState),
   ];
   if (polarClient) {
