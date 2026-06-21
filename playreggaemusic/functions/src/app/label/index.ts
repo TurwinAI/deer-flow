@@ -31,8 +31,10 @@ export interface Release {
 
 /**
  * A track on a release. `previewClipPath` points at the public Storage
- * `previews/...` clip; `masterPath` points at the private `masters/...` file
- * (never world-readable — see storage.rules / firestore.rules).
+ * `previews/...` clip. The PRIVATE master-audio object path is NOT stored here
+ * — the `tracks` doc is world-readable, so leaking `masterPath` in it would
+ * expose the private master to any reader. The master path lives in the
+ * admin-only `track_masters/{trackId}` collection (see `TrackMaster`).
  */
 export interface Track {
   id: string;
@@ -40,6 +42,16 @@ export interface Track {
   title: string;
   durationSec: number;
   previewClipPath: string;
+}
+
+/**
+ * The PRIVATE master-audio object path for a track. Stored in the admin-only
+ * `track_masters/{trackId}` collection (firestore.rules denies all client
+ * access; the admin SDK bypasses rules). Never exposed in the public `tracks`
+ * doc. `masterPath` points at the private `masters/...` Storage object.
+ */
+export interface TrackMaster {
+  trackId: string;
   masterPath: string;
 }
 

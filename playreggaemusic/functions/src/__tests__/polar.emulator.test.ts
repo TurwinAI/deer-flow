@@ -14,7 +14,13 @@
  */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { getDb } from "../harness/persistence/firestore";
-import { createProduct, createRelease, createTrack, getOrder } from "../app/label/store";
+import {
+  createProduct,
+  createRelease,
+  createTrack,
+  getOrder,
+  setTrackMaster,
+} from "../app/label/store";
 import { FakePolarClient } from "../app/polar/client";
 import { createCheckoutForProduct } from "../app/polar/checkout";
 import { handlePolarWebhook, type PolarWebhookEvent } from "../app/polar/webhook";
@@ -56,8 +62,10 @@ const TRACK: Track = {
   title: "Test Track",
   durationSec: 200,
   previewClipPath: "previews/test/track.mp3",
-  masterPath: "masters/test/track.wav",
 };
+
+/** The private master path for TRACK — seeded into the admin-only collection. */
+const TRACK_MASTER_PATH = "masters/test/track.wav";
 
 /** A fake signer: returns a deterministic URL, never touches GCS. */
 const fakeSigner: DownloadSigner = async (masterPath, expiresAtMs) =>
@@ -70,7 +78,7 @@ describe.skipIf(RUN)("polar checkout/webhook/entitlement (emulator)", () => {
 
   afterEach(async () => {
     const db = getDb();
-    for (const coll of ["artists", "releases", "tracks", "products", "orders"]) {
+    for (const coll of ["artists", "releases", "tracks", "track_masters", "products", "orders"]) {
       const snap = await db.collection(coll).get();
       await Promise.all(snap.docs.map((d) => d.ref.delete()));
     }
@@ -135,6 +143,8 @@ describe.skipIf(RUN)("polar checkout/webhook/entitlement (emulator)", () => {
   it("entitled customer gets a signed download url with disclosure + license", async () => {
     await createRelease(RELEASE);
     await createTrack(TRACK);
+    // The master path lives privately in track_masters, NOT on the public track.
+    await setTrackMaster(TRACK.id, TRACK_MASTER_PATH);
     await createProduct(PRODUCT);
     const order: Order = {
       id: "ord_ent_1",

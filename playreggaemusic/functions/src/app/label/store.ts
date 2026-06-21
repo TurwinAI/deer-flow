@@ -9,11 +9,12 @@
  */
 import type { Firestore } from "firebase-admin/firestore";
 import { getDb } from "../../harness/persistence/firestore";
-import type { Artist, Order, Product, Release, Track } from "./index";
+import type { Artist, Order, Product, Release, Track, TrackMaster } from "./index";
 
 const ARTISTS = "artists";
 const RELEASES = "releases";
 const TRACKS = "tracks";
+const TRACK_MASTERS = "track_masters";
 const PRODUCTS = "products";
 const ORDERS = "orders";
 
@@ -86,6 +87,30 @@ export async function createTrack(track: Track, store?: Firestore): Promise<Trac
 export async function listTracksByRelease(releaseId: string, store?: Firestore): Promise<Track[]> {
   const snap = await db(store).collection(TRACKS).where("releaseId", "==", releaseId).get();
   return snap.docs.map((d) => d.data() as Track);
+}
+
+/**
+ * Write a track's PRIVATE master path to the admin-only `track_masters/{trackId}`
+ * collection (firestore.rules denies all client access; the admin SDK bypasses
+ * rules). Kept out of the world-readable `tracks` doc.
+ */
+export async function setTrackMaster(
+  trackId: string,
+  masterPath: string,
+  store?: Firestore,
+): Promise<TrackMaster> {
+  const master: TrackMaster = { trackId, masterPath };
+  await db(store).collection(TRACK_MASTERS).doc(trackId).set({ ...master });
+  return master;
+}
+
+/** Read a track's private master path (admin SDK). Returns null if absent. */
+export async function getTrackMaster(
+  trackId: string,
+  store?: Firestore,
+): Promise<TrackMaster | null> {
+  const snap = await db(store).collection(TRACK_MASTERS).doc(trackId).get();
+  return snap.exists ? (snap.data() as TrackMaster) : null;
 }
 
 // ---------------------------------------------------------------------------

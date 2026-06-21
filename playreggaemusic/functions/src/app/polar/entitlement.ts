@@ -8,7 +8,7 @@
  * listening-license note (manifest §8.2 / §8.4).
  */
 import type { Firestore } from "firebase-admin/firestore";
-import { getOrder, listOrders, listTracksByRelease } from "../label/store";
+import { getOrder, getTrackMaster, listOrders, listTracksByRelease } from "../label/store";
 import { getProduct } from "../label/store";
 import type { Order } from "../label/index";
 
@@ -81,8 +81,9 @@ async function defaultSigner(masterPath: string, expiresAtMs: number): Promise<s
  * Mint a time-limited signed download URL for a track master, but only after
  * verifying the order is PAID and unlocks the track's release.
  *
- * @throws if the order is missing/unpaid, the product/track is unknown, or the
- *   track does not belong to the order's product release.
+ * @throws if the order is missing/unpaid, the product/track is unknown, the
+ *   track does not belong to the order's product release, or the track has no
+ *   master registered in the admin-only track_masters collection.
  */
 export async function mintDownloadUrl(
   orderId: string,
@@ -115,8 +116,15 @@ export async function mintDownloadUrl(
     );
   }
 
+  // The private master path is NOT on the public track doc — fetch it from the
+  // admin-only track_masters collection (admin SDK bypasses firestore.rules).
+  const master = await getTrackMaster(trackId, db);
+  if (!master) {
+    throw new Error(`Track ${trackId} has no master registered.`);
+  }
+
   const expiresAtMs = Date.now() + ttlMs;
-  const url = await signer(track.masterPath, expiresAtMs);
+  const url = await signer(master.masterPath, expiresAtMs);
 
   return {
     url,

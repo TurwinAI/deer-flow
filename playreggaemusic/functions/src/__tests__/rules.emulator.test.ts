@@ -5,6 +5,7 @@
  * Asserts:
  *   - public (unauthenticated) CAN read catalog `artists`,
  *   - public CANNOT write `artists` (admin-only),
+ *   - NOBODY (anon or non-admin) can read the private `track_masters`,
  *   - NOBODY (unauthenticated client) can read engine collections
  *     `threads` / `memory` / `checkpoints`.
  */
@@ -37,6 +38,10 @@ describe.skipIf(RUN)("firestore.rules (emulator)", () => {
       const db = ctx.firestore();
       await setDoc(doc(db, "artists", "roots-untold"), { name: "Roots Untold" });
       await setDoc(doc(db, "tracks", "trk1"), { title: "Foundation Stones" });
+      await setDoc(doc(db, "track_masters", "trk1"), {
+        trackId: "trk1",
+        masterPath: "masters/foundation-stones/01.wav",
+      });
       await setDoc(doc(db, "products", "prod1"), { title: "Download" });
       await setDoc(doc(db, "orders", "o1"), { customer: "cus_test" });
       await setDoc(doc(db, "threads", "t1"), { threadId: "t1" });
@@ -95,6 +100,23 @@ describe.skipIf(RUN)("firestore.rules (emulator)", () => {
   it("non-admin authenticated user CANNOT read orders", async () => {
     const db = testEnv.authenticatedContext("fan").firestore();
     await assertFails(getDoc(doc(db, "orders", "o1")));
+  });
+
+  it("anon CANNOT read private track_masters (master path stays private)", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, "track_masters", "trk1")));
+  });
+
+  it("non-admin authenticated user CANNOT read private track_masters", async () => {
+    const db = testEnv.authenticatedContext("fan").firestore();
+    await assertFails(getDoc(doc(db, "track_masters", "trk1")));
+  });
+
+  it("anon CANNOT write track_masters", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(
+      setDoc(doc(db, "track_masters", "evilmaster"), { masterPath: "masters/hax.wav" }),
+    );
   });
 
   it("NOBODY can read engine threads", async () => {

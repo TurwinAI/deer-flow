@@ -4,7 +4,9 @@
  * Uses fixed document ids and set-with-id writes, so calling it twice produces
  * no duplicates — the second call overwrites identical data. Creates the
  * artist, a debut release (PRM catalog number, aiGenerated), three tracks with
- * preview + master Storage paths, and a music_download product for the release.
+ * public preview paths plus their PRIVATE master paths (stored separately in
+ * the admin-only track_masters collection), and a music_download product for
+ * the release.
  */
 import type { Firestore } from "firebase-admin/firestore";
 import {
@@ -12,6 +14,7 @@ import {
   createProduct,
   createRelease,
   createTrack,
+  setTrackMaster,
 } from "./store";
 import type { Artist, Product, Release, Track } from "./index";
 
@@ -49,29 +52,41 @@ const RELEASE: Release = {
   aiGenerated: true,
 };
 
-const TRACKS: Track[] = [
+/** Public track docs (no master path) paired with their private master path. */
+interface SeedTrack {
+  track: Track;
+  masterPath: string;
+}
+
+const TRACKS: SeedTrack[] = [
   {
-    id: FOUNDATION_TRACK_IDS[0],
-    releaseId: FOUNDATION_RELEASE_ID,
-    title: "Foundation Stones",
-    durationSec: 218,
-    previewClipPath: "previews/foundation-stones/01-foundation-stones.mp3",
+    track: {
+      id: FOUNDATION_TRACK_IDS[0],
+      releaseId: FOUNDATION_RELEASE_ID,
+      title: "Foundation Stones",
+      durationSec: 218,
+      previewClipPath: "previews/foundation-stones/01-foundation-stones.mp3",
+    },
     masterPath: "masters/foundation-stones/01-foundation-stones.wav",
   },
   {
-    id: FOUNDATION_TRACK_IDS[1],
-    releaseId: FOUNDATION_RELEASE_ID,
-    title: "Jah Light Dub",
-    durationSec: 245,
-    previewClipPath: "previews/foundation-stones/02-jah-light-dub.mp3",
+    track: {
+      id: FOUNDATION_TRACK_IDS[1],
+      releaseId: FOUNDATION_RELEASE_ID,
+      title: "Jah Light Dub",
+      durationSec: 245,
+      previewClipPath: "previews/foundation-stones/02-jah-light-dub.mp3",
+    },
     masterPath: "masters/foundation-stones/02-jah-light-dub.wav",
   },
   {
-    id: FOUNDATION_TRACK_IDS[2],
-    releaseId: FOUNDATION_RELEASE_ID,
-    title: "Rivers of Zion",
-    durationSec: 201,
-    previewClipPath: "previews/foundation-stones/03-rivers-of-zion.mp3",
+    track: {
+      id: FOUNDATION_TRACK_IDS[2],
+      releaseId: FOUNDATION_RELEASE_ID,
+      title: "Rivers of Zion",
+      durationSec: 201,
+      previewClipPath: "previews/foundation-stones/03-rivers-of-zion.mp3",
+    },
     masterPath: "masters/foundation-stones/03-rivers-of-zion.wav",
   },
 ];
@@ -97,8 +112,9 @@ export async function seedRootsUntold(store?: Firestore): Promise<SeedResult> {
   await createArtist(ARTIST, store);
   await createRelease(RELEASE, store);
   const tracks: Track[] = [];
-  for (const track of TRACKS) {
+  for (const { track, masterPath } of TRACKS) {
     tracks.push(await createTrack(track, store));
+    await setTrackMaster(track.id, masterPath, store);
   }
   await createProduct(PRODUCT, store);
   return { artist: ARTIST, release: RELEASE, tracks, product: PRODUCT };

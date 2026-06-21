@@ -22,11 +22,13 @@ import {
   getArtist,
   getProduct,
   getRelease,
+  getTrackMaster,
   listArtists,
   listOrders,
   listReleasesByArtist,
   listTracksByRelease,
   recordOrder,
+  setTrackMaster,
 } from "../app/label/store";
 import {
   FOUNDATION_PRODUCT_ID,
@@ -46,7 +48,7 @@ describe.skipIf(RUN)("label catalog (emulator)", () => {
 
   afterEach(async () => {
     const db = getDb();
-    for (const coll of ["artists", "releases", "tracks", "products", "orders"]) {
+    for (const coll of ["artists", "releases", "tracks", "track_masters", "products", "orders"]) {
       const snap = await db.collection(coll).get();
       await Promise.all(snap.docs.map((d) => d.ref.delete()));
     }
@@ -89,7 +91,7 @@ describe.skipIf(RUN)("label catalog (emulator)", () => {
     expect(byArtist.map((r) => r.id)).toContain("tool-release");
   });
 
-  it("create_track tool round-trips and lists by release", async () => {
+  it("create_track tool writes a PUBLIC track doc WITHOUT masterPath", async () => {
     await createTrackTool.invoke({
       id: "tool-track",
       releaseId: "tool-release",
@@ -100,7 +102,19 @@ describe.skipIf(RUN)("label catalog (emulator)", () => {
     });
     const tracks = await listTracksByRelease("tool-release");
     expect(tracks.map((t) => t.id)).toContain("tool-track");
-    expect(tracks[0].masterPath).toBe("masters/tool/track.wav");
+    // The public, world-readable track doc must NOT carry the private master.
+    expect(tracks[0]).not.toHaveProperty("masterPath");
+    // The private master is routed to the admin-only track_masters collection.
+    const master = await getTrackMaster("tool-track");
+    expect(master?.masterPath).toBe("masters/tool/track.wav");
+  });
+
+  it("setTrackMaster / getTrackMaster round-trip the private master path", async () => {
+    expect(await getTrackMaster("solo-track")).toBeNull();
+    const written = await setTrackMaster("solo-track", "masters/solo/track.wav");
+    expect(written).toEqual({ trackId: "solo-track", masterPath: "masters/solo/track.wav" });
+    const read = await getTrackMaster("solo-track");
+    expect(read).toEqual({ trackId: "solo-track", masterPath: "masters/solo/track.wav" });
   });
 
   it("create_product tool round-trips through the store", async () => {
@@ -149,8 +163,20 @@ describe.skipIf(RUN)("label catalog (emulator)", () => {
 
     // Persisted as expected.
     expect((await getArtist(ROOTS_UNTOLD_ARTIST_ID))?.name).toBe("Roots Untold");
-    expect((await listTracksByRelease(FOUNDATION_RELEASE_ID))).toHaveLength(3);
+    const seededTracks = await listTracksByRelease(FOUNDATION_RELEASE_ID);
+    expect(seededTracks).toHaveLength(3);
     expect((await getProduct(FOUNDATION_PRODUCT_ID))?.type).toBe("music_download");
+
+    // Public track docs must NOT leak the private master path...
+    for (const track of seededTracks) {
+      expect(track).not.toHaveProperty("masterPath");
+    }
+    // ...the masters live in the admin-only track_masters collection instead.
+    for (const id of FOUNDATION_TRACK_IDS) {
+      const master = await getTrackMaster(id);
+      expect(master?.trackId).toBe(id);
+      expect(master?.masterPath).toMatch(/^masters\//);
+    }
 
     // Idempotent: a second call must not create duplicates (fixed ids).
     await seedRootsUntold();

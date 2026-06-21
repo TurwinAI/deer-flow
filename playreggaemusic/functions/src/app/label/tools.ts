@@ -15,6 +15,7 @@ import {
   createRelease,
   createTrack,
   listOrders,
+  setTrackMaster,
 } from "./store";
 import type { Artist, Product, Release, Track } from "./index";
 
@@ -47,7 +48,12 @@ const createTrackSchema = z.object({
   title: z.string().describe("track title"),
   durationSec: z.number().int().positive().describe("track duration in whole seconds"),
   previewClipPath: z.string().describe("public Storage path under previews/"),
-  masterPath: z.string().describe("private Storage path under masters/"),
+  masterPath: z
+    .string()
+    .describe(
+      "private Storage path under masters/. Stored PRIVATELY in track_masters/ " +
+        "(admin-only) — never written to the world-readable public track doc.",
+    ),
 });
 
 const createProductSchema = z.object({
@@ -106,7 +112,10 @@ export const createReleaseTool = new DynamicStructuredTool({
 
 export const createTrackTool = new DynamicStructuredTool({
   name: "create_track",
-  description: "Create or overwrite a track on a release, with preview and master Storage paths.",
+  description:
+    "Create or overwrite a track on a release. Writes a PUBLIC, world-readable " +
+    "track doc (no master path) and stores the private master path separately " +
+    "in the admin-only track_masters collection.",
   schema: createTrackSchema,
   func: async (input: z.infer<typeof createTrackSchema>): Promise<string> => {
     const track: Track = {
@@ -115,9 +124,9 @@ export const createTrackTool = new DynamicStructuredTool({
       title: input.title,
       durationSec: input.durationSec,
       previewClipPath: input.previewClipPath,
-      masterPath: input.masterPath,
     };
     await createTrack(track);
+    await setTrackMaster(input.id, input.masterPath);
     return `Created track ${track.id} (${track.title}) on release ${track.releaseId}.`;
   },
 });
