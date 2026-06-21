@@ -24,6 +24,7 @@ import {
 import {
   getArtist,
   getProduct,
+  getProvenance,
   getRelease,
   getRights,
   getTrackMaster,
@@ -32,8 +33,11 @@ import {
   listReleasesByArtist,
   listTracksByRelease,
   recordOrder,
+  setProvenance,
   setTrackMaster,
 } from "../app/label/store";
+import { contentSha256 } from "../app/label/assets";
+import type { ProvenanceRecord } from "../app/label/index";
 import {
   FOUNDATION_PRODUCT_ID,
   FOUNDATION_RELEASE_ID,
@@ -60,6 +64,7 @@ describe.skipIf(RUN)("label catalog (emulator)", () => {
       "products",
       "orders",
       "rights",
+      "provenance",
     ]) {
       const snap = await db.collection(coll).get();
       await Promise.all(snap.docs.map((d) => d.ref.delete()));
@@ -74,8 +79,11 @@ describe.skipIf(RUN)("label catalog (emulator)", () => {
         "create_product",
         "create_release",
         "create_track",
+        "generate_preview",
+        "ingest_master",
         "list_orders",
         "set_ownership_splits",
+        "set_provenance",
         "set_release_identifiers",
         "set_track_isrc",
       ].sort(),
@@ -271,6 +279,25 @@ describe.skipIf(RUN)("label catalog (emulator)", () => {
     expect(await getRights("rel-bad-splits")).toBeNull();
   });
 
+  it("setProvenance writes provenance/{trackId} with a content SHA-256", async () => {
+    const masterBytes = Buffer.from("provenance-master-bytes");
+    const record: ProvenanceRecord = {
+      trackId: "prov-track",
+      generator: "PlayReggaeMusic.ai",
+      createdAt: "2026-07-04T00:00:00.000Z",
+      disclosure: "AI-generated: produced with artificial intelligence.",
+      contentSha256: contentSha256(masterBytes),
+    };
+    await setProvenance(record);
+    const read = await getProvenance("prov-track");
+    expect(read?.generator).toBe("PlayReggaeMusic.ai");
+    expect(read?.contentSha256).toBe(contentSha256(masterBytes));
+    expect(read?.contentSha256).toMatch(/^[0-9a-f]{64}$/);
+    // Stored under the provenance collection (not on the public track doc).
+    const raw = await getDb().collection("provenance").doc("prov-track").get();
+    expect(raw.data()?.trackId).toBe("prov-track");
+  });
+
   it("seedRootsUntold creates the expected catalog and is idempotent", async () => {
     const first = await seedRootsUntold();
     expect(first.artist.id).toBe(ROOTS_UNTOLD_ARTIST_ID);
@@ -310,6 +337,17 @@ describe.skipIf(RUN)("label catalog (emulator)", () => {
       const master = await getTrackMaster(id);
       expect(master?.trackId).toBe(id);
       expect(master?.masterPath).toMatch(/^masters\//);
+    }
+
+    // Seed writes a PUBLIC AI-provenance record per track, each with a
+    // content SHA-256 binding the disclosure to the (seeded) master bytes.
+    expect(first.provenance).toHaveLength(3);
+    for (const id of FOUNDATION_TRACK_IDS) {
+      const prov = await getProvenance(id);
+      expect(prov?.trackId).toBe(id);
+      expect(prov?.generator).toBe("PlayReggaeMusic.ai");
+      expect(prov?.disclosure).toMatch(/ai-generated/i);
+      expect(prov?.contentSha256).toMatch(/^[0-9a-f]{64}$/);
     }
 
     // Idempotent: a second call must not create duplicates (fixed ids).

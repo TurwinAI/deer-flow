@@ -59,6 +59,14 @@ describe.skipIf(RUN)("firestore.rules (emulator)", () => {
           { payee: "Roots Untold", percent: 30 },
         ],
       });
+      // PUBLIC AI-provenance disclosure — must be world-readable, admin-write.
+      await setDoc(doc(db, "provenance", "trk1"), {
+        trackId: "trk1",
+        generator: "PlayReggaeMusic.ai",
+        createdAt: "2026-07-04T00:00:00.000Z",
+        disclosure: "AI-generated: produced with artificial intelligence.",
+        contentSha256: "a".repeat(64),
+      });
       await setDoc(doc(db, "products", "prod1"), { title: "Download" });
       await setDoc(doc(db, "orders", "o1"), { customer: "cus_test" });
       await setDoc(doc(db, "threads", "t1"), { threadId: "t1" });
@@ -166,6 +174,27 @@ describe.skipIf(RUN)("firestore.rules (emulator)", () => {
         releaseId: "evil",
         ownershipSplits: [{ payee: "hax", percent: 100 }],
       }),
+    );
+  });
+
+  it("public CAN read AI-provenance (transparency artifact, public-read)", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    const snap = await assertSucceeds(getDoc(doc(db, "provenance", "trk1")));
+    expect(snap.data()?.generator).toBe("PlayReggaeMusic.ai");
+    expect(snap.data()?.contentSha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("anon CANNOT write provenance (admin-write only)", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(
+      setDoc(doc(db, "provenance", "evilprov"), { trackId: "evil", generator: "hax" }),
+    );
+  });
+
+  it("non-admin authenticated user CANNOT write provenance", async () => {
+    const db = testEnv.authenticatedContext("fan").firestore();
+    await assertFails(
+      setDoc(doc(db, "provenance", "evilprov2"), { trackId: "evil", generator: "hax" }),
     );
   });
 

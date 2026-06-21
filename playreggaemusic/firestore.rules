@@ -43,6 +43,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // AI-provenance disclosure records (provenance/{trackId}): a TRANSPARENCY
+    // artifact — PUBLIC-read so listeners can verify a recording is AI-generated,
+    // but admin-write only. The admin SDK writes them; clients may only read.
+    match /provenance/{doc=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // SENSITIVE ownership splits (rights/{releaseId}): deny ALL client access.
     // Splits are commercially sensitive and must never be publicly readable.
     // The admin SDK bypasses rules, so the engine still reads/writes; no client

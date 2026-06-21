@@ -14,6 +14,7 @@ import type {
   Credit,
   Order,
   Product,
+  ProvenanceRecord,
   Release,
   RightsRecord,
   Split,
@@ -35,6 +36,7 @@ const TRACK_MASTERS = "track_masters";
 const PRODUCTS = "products";
 const ORDERS = "orders";
 const RIGHTS = "rights";
+const PROVENANCE = "provenance";
 
 function db(override?: Firestore): Firestore {
   return override ?? getDb();
@@ -194,6 +196,26 @@ export async function listTracksByRelease(releaseId: string, store?: Firestore):
 }
 
 /**
+ * Set a track's PUBLIC preview-clip path on an existing track doc. Merges so
+ * other track fields are untouched. Throws if the track does not exist. Used by
+ * the asset pipeline after a preview clip is written to public Storage.
+ */
+export async function setTrackPreviewClip(
+  trackId: string,
+  previewClipPath: string,
+  store?: Firestore,
+): Promise<Track> {
+  const ref = db(store).collection(TRACKS).doc(trackId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    throw new Error(`Unknown track: ${trackId}`);
+  }
+  await ref.set({ previewClipPath }, { merge: true });
+  const updated = await ref.get();
+  return updated.data() as Track;
+}
+
+/**
  * Write a track's PRIVATE master path to the admin-only `track_masters/{trackId}`
  * collection (firestore.rules denies all client access; the admin SDK bypasses
  * rules). Kept out of the world-readable `tracks` doc.
@@ -249,6 +271,36 @@ export async function getRights(
 ): Promise<RightsRecord | null> {
   const snap = await db(store).collection(RIGHTS).doc(releaseId).get();
   return snap.exists ? (snap.data() as RightsRecord) : null;
+}
+
+// ---------------------------------------------------------------------------
+// Provenance — PUBLIC AI-disclosure record (provenance/{trackId})
+// ---------------------------------------------------------------------------
+
+/**
+ * Write a track's C2PA-style AI-provenance disclosure to the PUBLIC-read,
+ * admin-write `provenance/{trackId}` collection (firestore.rules). Unlike
+ * masters/rights this is a transparency artifact meant to be world-readable —
+ * the admin SDK writes it; clients may only read. Idempotent (set-with-id).
+ */
+export async function setProvenance(
+  record: ProvenanceRecord,
+  store?: Firestore,
+): Promise<ProvenanceRecord> {
+  await db(store)
+    .collection(PROVENANCE)
+    .doc(record.trackId)
+    .set(pruneUndefined({ ...record }));
+  return record;
+}
+
+/** Read a track's AI-provenance record (admin SDK). Returns null if absent. */
+export async function getProvenance(
+  trackId: string,
+  store?: Firestore,
+): Promise<ProvenanceRecord | null> {
+  const snap = await db(store).collection(PROVENANCE).doc(trackId).get();
+  return snap.exists ? (snap.data() as ProvenanceRecord) : null;
 }
 
 // ---------------------------------------------------------------------------

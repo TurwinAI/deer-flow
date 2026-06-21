@@ -15,12 +15,22 @@ import {
   createRelease,
   createTrack,
   listOrders,
+  setProvenance,
   setReleaseIdentifiers,
   setRights,
   setTrackISRC,
   setTrackMaster,
 } from "./store";
-import type { Artist, Credit, Product, Release, Split, Track } from "./index";
+import {
+  contentSha256,
+  defaultBucket,
+  generatePreview,
+  ingestMaster,
+  UnconfiguredPreviewEncoder,
+  type PreviewEncoder,
+  type StorageBucketLike,
+} from "./assets";
+import type { Artist, Credit, Product, ProvenanceRecord, Release, Split, Track } from "./index";
 
 const releaseTypeSchema = z.enum(["album", "ep", "single"]);
 const productTypeSchema = z.enum(["music_download", "merch"]);
@@ -113,6 +123,39 @@ const setOwnershipSplitsSchema = z.object({
       "ownership splits; a non-empty set must sum to 100. SENSITIVE — written " +
         "ONLY to the admin-only rights collection, never to the public release doc.",
     ),
+});
+
+const ingestMasterSchema = z.object({
+  trackId: z.string().describe("id of the track this master belongs to"),
+  masterPath: z
+    .string()
+    .describe(
+      "private Storage path under masters/ ending in .wav/.flac/.aiff. " +
+        "Stored PRIVATELY in track_masters/ — never the public track doc.",
+    ),
+  contentBase64: z
+    .string()
+    .describe("the master audio bytes, base64-encoded (non-empty)"),
+});
+
+const generatePreviewSchema = z.object({
+  trackId: z.string().describe("id of the track to generate a preview for"),
+  previewClipPath: z
+    .string()
+    .describe("public Storage path under previews/ for the generated clip"),
+  masterContentBase64: z
+    .string()
+    .describe("the source master audio bytes, base64-encoded, to clip from"),
+});
+
+const setProvenanceSchema = z.object({
+  trackId: z.string().describe("id of the track this disclosure covers"),
+  generator: z.string().describe("the generating system, e.g. 'PlayReggaeMusic.ai'"),
+  model: z.string().optional().describe("underlying model identifier (optional)"),
+  disclosure: z.string().describe("human-readable AI-generated disclosure statement"),
+  contentBase64: z
+    .string()
+    .describe("the master audio bytes, base64-encoded, to bind the disclosure to"),
 });
 
 const listOrdersSchema = z.object({});
@@ -240,6 +283,82 @@ export const setOwnershipSplitsTool = new DynamicStructuredTool({
   },
 });
 
+/**
+ * Asset-tool dependencies (Storage bucket + preview encoder). Injectable so a
+ * test can supply an emulator bucket + a deterministic FakePreviewEncoder and
+ * never run real ffmpeg or touch a live bucket. Production defaults: the admin
+ * Storage default bucket and the deploy-time stub encoder (which throws until a
+ * real encoder is configured) — neither is invoked in tests.
+ */
+export interface AssetToolDeps {
+  resolveBucket: () => Promise<StorageBucketLike>;
+  encoder: PreviewEncoder;
+}
+
+let assetToolDeps: AssetToolDeps = {
+  resolveBucket: defaultBucket,
+  encoder: new UnconfiguredPreviewEncoder(),
+};
+
+/** Override the asset-tool dependencies (tests inject fakes). */
+export function setAssetToolDeps(deps: AssetToolDeps): void {
+  assetToolDeps = deps;
+}
+
+export const ingestMasterTool = new DynamicStructuredTool({
+  name: "ingest_master",
+  description:
+    "Ingest a track master: write the audio bytes to PRIVATE masters/ Storage " +
+    "and record the private path in the admin-only track_masters collection. " +
+    "Returns the master content SHA-256 for the provenance record.",
+  schema: ingestMasterSchema,
+  func: async (input: z.infer<typeof ingestMasterSchema>): Promise<string> => {
+    const bytes = Buffer.from(input.contentBase64, "base64");
+    const bucket = await assetToolDeps.resolveBucket();
+    const result = await ingestMaster(input.trackId, input.masterPath, bytes, { bucket });
+    return `Ingested master for ${result.trackId} at ${result.masterPath} (sha256 ${result.contentSha256}).`;
+  },
+});
+
+export const generatePreviewTool = new DynamicStructuredTool({
+  name: "generate_preview",
+  description:
+    "Generate a short PUBLIC preview clip from a master and store it under " +
+    "previews/, setting the track's public previewClipPath. Uses the configured " +
+    "audio encoder.",
+  schema: generatePreviewSchema,
+  func: async (input: z.infer<typeof generatePreviewSchema>): Promise<string> => {
+    const masterBytes = Buffer.from(input.masterContentBase64, "base64");
+    const bucket = await assetToolDeps.resolveBucket();
+    const result = await generatePreview(input.trackId, input.previewClipPath, masterBytes, {
+      bucket,
+      encoder: assetToolDeps.encoder,
+    });
+    return `Generated preview for ${result.trackId} at ${result.previewClipPath}.`;
+  },
+});
+
+export const setProvenanceTool = new DynamicStructuredTool({
+  name: "set_provenance",
+  description:
+    "Write a track's PUBLIC C2PA-style AI-provenance disclosure record. " +
+    "Binds the disclosure to the master bytes via a SHA-256 content hash.",
+  schema: setProvenanceSchema,
+  func: async (input: z.infer<typeof setProvenanceSchema>): Promise<string> => {
+    const bytes = Buffer.from(input.contentBase64, "base64");
+    const record: ProvenanceRecord = {
+      trackId: input.trackId,
+      generator: input.generator,
+      model: input.model,
+      createdAt: new Date().toISOString(),
+      disclosure: input.disclosure,
+      contentSha256: contentSha256(bytes),
+    };
+    await setProvenance(record);
+    return `Set AI-provenance for ${record.trackId} (sha256 ${record.contentSha256}).`;
+  },
+});
+
 export const listOrdersTool = new DynamicStructuredTool({
   name: "list_orders",
   description: "List all mirrored Polar orders as JSON.",
@@ -260,6 +379,9 @@ export function getLabelTools(): StructuredToolInterface[] {
     setReleaseIdentifiersTool,
     setTrackIsrcTool,
     setOwnershipSplitsTool,
+    ingestMasterTool,
+    generatePreviewTool,
+    setProvenanceTool,
     listOrdersTool,
   ];
 }

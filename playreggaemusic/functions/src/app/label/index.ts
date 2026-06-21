@@ -73,6 +73,26 @@ export interface TrackMaster {
   masterPath: string;
 }
 
+/**
+ * A C2PA-style AI-provenance disclosure record for a track's master. This is a
+ * TRANSPARENCY artifact: it is PUBLIC-read (so listeners can verify the work is
+ * AI-generated) and admin-write only. Stored in `provenance/{trackId}`.
+ * `contentSha256` binds the disclosure to the exact master bytes.
+ */
+export interface ProvenanceRecord {
+  trackId: string;
+  /** The generating system, e.g. "PlayReggaeMusic.ai". */
+  generator: string;
+  /** Optional underlying model identifier. */
+  model?: string;
+  /** ISO-8601 timestamp the disclosure was recorded. */
+  createdAt: string;
+  /** Human-readable AI-generated disclosure statement. */
+  disclosure: string;
+  /** Lower-case hex SHA-256 of the master bytes this disclosure covers. */
+  contentSha256: string;
+}
+
 /** A single ownership share, e.g. `{ payee: "Roots Untold", percent: 50 }`. */
 export interface Split {
   payee: string;
@@ -125,5 +145,6 @@ export interface Order {
 
 export * from "./identifiers";
 export * from "./store";
+export * from "./assets";
 export * from "./tools";
 export * from "./seed";

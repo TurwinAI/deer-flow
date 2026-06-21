@@ -26,11 +26,30 @@ import {
   createProduct,
   createRelease,
   listOrders,
+  setProvenance,
   setReleaseIdentifiers,
   setRights,
   setTrackISRC,
 } from "../label/store";
-import type { Artist, Credit, Order, Product, Release, RightsRecord, Track } from "../label";
+import {
+  contentSha256,
+  defaultBucket,
+  generatePreview,
+  ingestMaster,
+  UnconfiguredPreviewEncoder,
+  type PreviewEncoder,
+  type StorageBucketLike,
+} from "../label/assets";
+import type {
+  Artist,
+  Credit,
+  Order,
+  Product,
+  ProvenanceRecord,
+  Release,
+  RightsRecord,
+  Track,
+} from "../label";
 import { buildLabelAgent } from "../agent/leadAgent";
 import { createChatModel } from "../../harness/models";
 import type { ChatModelLike } from "../../harness/runtime";
@@ -126,6 +145,26 @@ const setIdentifiersSchema = z
 const setOwnershipSplitsSchema = z.object({
   releaseId: z.string().min(1),
   splits: z.array(z.object({ payee: z.string().min(1), percent: z.number() })),
+});
+
+const ingestMasterApiSchema = z.object({
+  trackId: z.string().min(1),
+  masterPath: z.string().min(1),
+  contentBase64: z.string().min(1),
+});
+
+const generatePreviewApiSchema = z.object({
+  trackId: z.string().min(1),
+  previewClipPath: z.string().min(1),
+  masterContentBase64: z.string().min(1),
+});
+
+const setProvenanceApiSchema = z.object({
+  trackId: z.string().min(1),
+  generator: z.string().min(1),
+  model: z.string().min(1).optional(),
+  disclosure: z.string().min(1),
+  contentBase64: z.string().min(1),
 });
 
 const runAgentSchema = z.object({
@@ -262,6 +301,100 @@ export async function handleSetOwnershipSplits(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Asset pipeline (P2B02) — admin-guarded master/preview/provenance handlers.
+// Storage bucket + preview encoder are INJECTED so unit tests pass fakes and
+// never run real ffmpeg or touch a live bucket. Production defaults: the admin
+// Storage default bucket and the deploy-time stub encoder.
+// ---------------------------------------------------------------------------
+
+/** Injected dependencies for the asset handlers. */
+export interface AssetApiDeps {
+  resolveBucket: () => Promise<StorageBucketLike>;
+  encoder: PreviewEncoder;
+}
+
+const DEFAULT_ASSET_DEPS: AssetApiDeps = {
+  resolveBucket: defaultBucket,
+  encoder: new UnconfiguredPreviewEncoder(),
+};
+
+/** Result of `adminIngestMaster`: the private path + master content hash. */
+export interface IngestMasterResult {
+  trackId: string;
+  masterPath: string;
+  contentSha256: string;
+}
+
+/**
+ * Ingest a track master to PRIVATE Storage and record it in the admin-only
+ * track_masters collection. Validation errors (bad extension/prefix/empty
+ * bytes) surface as `invalid-argument`.
+ */
+export async function handleIngestMaster(
+  req: AdminRequest<unknown>,
+  deps: AssetApiDeps = DEFAULT_ASSET_DEPS,
+): Promise<IngestMasterResult> {
+  assertAdmin(req.auth);
+  const input = parse(ingestMasterApiSchema, req.data);
+  const bytes = Buffer.from(input.contentBase64, "base64");
+  try {
+    const bucket = await deps.resolveBucket();
+    return await ingestMaster(input.trackId, input.masterPath, bytes, { bucket });
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/** Result of `adminGeneratePreview`: the public preview-clip path. */
+export interface GeneratePreviewResult {
+  trackId: string;
+  previewClipPath: string;
+}
+
+/**
+ * Generate a PUBLIC preview clip from supplied master bytes via the injected
+ * encoder and set the track's previewClipPath. Validation errors surface as
+ * `invalid-argument`.
+ */
+export async function handleGeneratePreview(
+  req: AdminRequest<unknown>,
+  deps: AssetApiDeps = DEFAULT_ASSET_DEPS,
+): Promise<GeneratePreviewResult> {
+  assertAdmin(req.auth);
+  const input = parse(generatePreviewApiSchema, req.data);
+  const masterBytes = Buffer.from(input.masterContentBase64, "base64");
+  try {
+    const bucket = await deps.resolveBucket();
+    return await generatePreview(input.trackId, input.previewClipPath, masterBytes, {
+      bucket,
+      encoder: deps.encoder,
+    });
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/**
+ * Write a track's PUBLIC C2PA-style AI-provenance disclosure record, binding it
+ * to the master bytes via a SHA-256 content hash.
+ */
+export async function handleSetProvenance(
+  req: AdminRequest<unknown>,
+): Promise<ProvenanceRecord> {
+  assertAdmin(req.auth);
+  const input = parse(setProvenanceApiSchema, req.data);
+  const record: ProvenanceRecord = {
+    trackId: input.trackId,
+    generator: input.generator,
+    model: input.model,
+    createdAt: new Date().toISOString(),
+    disclosure: input.disclosure,
+    contentSha256: contentSha256(Buffer.from(input.contentBase64, "base64")),
+  };
+  return setProvenance(record);
+}
+
 /** A transcript line surfaced in the agent console. */
 export interface TranscriptEntry {
   role: "system" | "human" | "ai" | "tool";
@@ -325,6 +458,15 @@ export const adminSetIdentifiers = onCall((request) =>
 );
 export const adminSetOwnershipSplits = onCall((request) =>
   handleSetOwnershipSplits(toAdminRequest(request)),
+);
+export const adminIngestMaster = onCall((request) =>
+  handleIngestMaster(toAdminRequest(request)),
+);
+export const adminGeneratePreview = onCall((request) =>
+  handleGeneratePreview(toAdminRequest(request)),
+);
+export const adminSetProvenance = onCall((request) =>
+  handleSetProvenance(toAdminRequest(request)),
 );
 // `runAgent` invokes the Claude-backed model factory, which reads
 // ANTHROPIC_API_KEY from the environment — bind it so the secret is present at
