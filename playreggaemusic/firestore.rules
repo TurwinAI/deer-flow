@@ -51,6 +51,14 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Release distributions (distributions/{releaseId}): OPERATIONAL/admin-only.
+    // Records the DSP delivery lifecycle (DDEX delivery id + status). Deny ALL
+    // client access — the admin SDK bypasses rules, so the engine still
+    // reads/writes; no client may read or write.
+    match /distributions/{doc=**} {
+      allow read, write: if false;
+    }
+
     // SENSITIVE ownership splits (rights/{releaseId}): deny ALL client access.
     // Splits are commercially sensitive and must never be publicly readable.
     // The admin SDK bypasses rules, so the engine still reads/writes; no client

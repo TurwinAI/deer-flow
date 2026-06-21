@@ -69,6 +69,12 @@ describe.skipIf(RUN)("firestore.rules (emulator)", () => {
       });
       await setDoc(doc(db, "products", "prod1"), { title: "Download" });
       await setDoc(doc(db, "orders", "o1"), { customer: "cus_test" });
+      // OPERATIONAL distribution record — must NOT be client-readable/writable.
+      await setDoc(doc(db, "distributions", "rel1"), {
+        releaseId: "rel1",
+        status: "delivered",
+        deliveryId: "fake-delivery-1",
+      });
       await setDoc(doc(db, "threads", "t1"), { threadId: "t1" });
       await setDoc(doc(db, "memory", "u1"), { seeded: true });
       await setDoc(doc(db, "checkpoints", "c1"), { id: "c1" });
@@ -195,6 +201,30 @@ describe.skipIf(RUN)("firestore.rules (emulator)", () => {
     const db = testEnv.authenticatedContext("fan").firestore();
     await assertFails(
       setDoc(doc(db, "provenance", "evilprov2"), { trackId: "evil", generator: "hax" }),
+    );
+  });
+
+  it("anon CANNOT read operational distributions", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, "distributions", "rel1")));
+  });
+
+  it("non-admin authenticated user CANNOT read distributions", async () => {
+    const db = testEnv.authenticatedContext("fan").firestore();
+    await assertFails(getDoc(doc(db, "distributions", "rel1")));
+  });
+
+  it("anon CANNOT write distributions", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(
+      setDoc(doc(db, "distributions", "evildist"), { releaseId: "evil", status: "delivered" }),
+    );
+  });
+
+  it("non-admin authenticated user CANNOT write distributions", async () => {
+    const db = testEnv.authenticatedContext("fan").firestore();
+    await assertFails(
+      setDoc(doc(db, "distributions", "evildist2"), { releaseId: "evil", status: "delivered" }),
     );
   });
 

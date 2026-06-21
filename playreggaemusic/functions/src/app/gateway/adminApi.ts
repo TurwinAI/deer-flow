@@ -50,6 +50,9 @@ import type {
   RightsRecord,
   Track,
 } from "../label";
+import { deliverRelease, scheduleRelease } from "../distribution/release";
+import type { DistributionRecord } from "../distribution/store";
+import { DdexDistributorClient, type DistributorClient } from "../distribution/client";
 import { buildLabelAgent } from "../agent/leadAgent";
 import { createChatModel } from "../../harness/models";
 import type { ChatModelLike } from "../../harness/runtime";
@@ -165,6 +168,17 @@ const setProvenanceApiSchema = z.object({
   model: z.string().min(1).optional(),
   disclosure: z.string().min(1),
   contentBase64: z.string().min(1),
+});
+
+const scheduleReleaseApiSchema = z.object({
+  releaseId: z.string().min(1),
+  scheduledAt: z.string().min(1),
+});
+
+const deliverReleaseApiSchema = z.object({
+  releaseId: z.string().min(1),
+  // The admin explicitly approving this consequential action. Required true.
+  approved: z.literal(true),
 });
 
 const runAgentSchema = z.object({
@@ -395,6 +409,51 @@ export async function handleSetProvenance(
   return setProvenance(record);
 }
 
+// ---------------------------------------------------------------------------
+// Distribution (P2B03, F4) — admin-guarded scheduling + the CONSEQUENTIAL
+// deliver-to-DSP, gated on the admin explicitly approving (`approved: true`).
+// The distributor client is INJECTED so unit tests pass a FakeDistributorClient
+// and the real DdexDistributorClient is never constructed/invoked in a test.
+// ---------------------------------------------------------------------------
+
+/**
+ * Schedule a release for DSP distribution. Records the intent (status
+ * "scheduled"); does not deliver. Unknown-release / validation errors surface as
+ * `invalid-argument`.
+ */
+export async function handleScheduleRelease(
+  req: AdminRequest<unknown>,
+): Promise<DistributionRecord> {
+  assertAdmin(req.auth);
+  const input = parse(scheduleReleaseApiSchema, req.data);
+  try {
+    return await scheduleRelease(input.releaseId, input.scheduledAt);
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/**
+ * Deliver a release to DSPs (CONSEQUENTIAL). The admin passing `approved: true`
+ * represents the human-in-the-loop approval of this action; the schema requires
+ * it (a missing/false `approved` is rejected as `invalid-argument` before any
+ * delivery). The distributor client is injected; production passes a real
+ * `DdexDistributorClient` (which only reaches out with an operator-supplied
+ * token at handoff), tests pass a `FakeDistributorClient`.
+ */
+export async function handleDeliverRelease(
+  req: AdminRequest<unknown>,
+  client: DistributorClient = new DdexDistributorClient(),
+): Promise<DistributionRecord> {
+  assertAdmin(req.auth);
+  const input = parse(deliverReleaseApiSchema, req.data);
+  try {
+    return await deliverRelease(input.releaseId, { client, approved: input.approved });
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
 /** A transcript line surfaced in the agent console. */
 export interface TranscriptEntry {
   role: "system" | "human" | "ai" | "tool";
@@ -467,6 +526,18 @@ export const adminGeneratePreview = onCall((request) =>
 );
 export const adminSetProvenance = onCall((request) =>
   handleSetProvenance(toAdminRequest(request)),
+);
+export const adminScheduleRelease = onCall((request) =>
+  handleScheduleRelease(toAdminRequest(request)),
+);
+// `adminDeliverRelease` performs the CONSEQUENTIAL delivery. It binds the
+// DISTRIBUTOR_API_TOKEN secret so the real DdexDistributorClient can read it at
+// runtime (and only then) — the token is operator-supplied at handoff. NO live
+// delivery occurs in any test (unit tests inject a FakeDistributorClient).
+const distributorApiToken = defineSecret("DISTRIBUTOR_API_TOKEN");
+
+export const adminDeliverRelease = onCall({ secrets: [distributorApiToken] }, (request) =>
+  handleDeliverRelease(toAdminRequest(request)),
 );
 // `runAgent` invokes the Claude-backed model factory, which reads
 // ANTHROPIC_API_KEY from the environment — bind it so the secret is present at

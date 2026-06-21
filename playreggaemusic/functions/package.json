@@ -19,6 +19,7 @@
     "@langchain/core": "^0.3.40",
     "@langchain/langgraph": "^0.2.44",
     "@langchain/langgraph-checkpoint": "^0.0.18",
+    "fast-xml-parser": "4.5.6",
     "firebase-admin": "^12.6.0",
     "firebase-functions": "^6.1.0",
     "gray-matter": "^4.0.3",

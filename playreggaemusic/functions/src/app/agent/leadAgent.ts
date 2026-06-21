@@ -16,6 +16,7 @@ import { buildSkillsPromptSection, type SkillRecord } from "../../harness/skills
 import { buildMemoryBlock, type MemoryFact } from "../../harness/memory";
 import { getBuiltinTools } from "../../harness/tools";
 import { getLabelTools } from "../label/tools";
+import { getDistributionTools } from "../distribution/tools";
 import { createCheckoutForProduct } from "../polar/checkout";
 import type { PolarClient } from "../polar/client";
 
@@ -95,7 +96,11 @@ export function buildLabelAgent({
   memoryFacts = [],
   polarClient,
 }: BuildLabelAgentDeps): LabelAgent {
-  const tools: StructuredToolInterface[] = [...getBuiltinTools(), ...getLabelTools()];
+  const tools: StructuredToolInterface[] = [
+    ...getBuiltinTools(),
+    ...getLabelTools(),
+    ...getDistributionTools(),
+  ];
   if (polarClient) {
     tools.push(buildCreateCheckoutTool(polarClient));
   }

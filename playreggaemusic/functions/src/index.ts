@@ -38,6 +38,8 @@ export {
   adminCreateRelease,
   adminCreateProduct,
   adminListOrders,
+  adminScheduleRelease,
+  adminDeliverRelease,
   runAgent,
 } from "./app/gateway/adminApi";
 
