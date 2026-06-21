@@ -24,6 +24,8 @@ import {
 } from "../../harness/orchestration";
 import { getLabelTools } from "../label/tools";
 import { getDistributionTools } from "../distribution/tools";
+import { getFinanceTools } from "../finance/tools";
+import type { ProductReleaseMap } from "../finance/revenue";
 import { createCheckoutForProduct } from "../polar/checkout";
 import type { PolarClient } from "../polar/client";
 
@@ -39,6 +41,11 @@ import type { PolarClient } from "../polar/client";
  * an admin callable with an inline `approved` boolean — kept as defense-in-depth
  * per P2B03). Listing it makes the gate the single generic chokepoint the moment
  * a deliver tool is exposed to the agent.
+ *
+ * `initiate_payout` (P2B05, F7) IS exposed to the agent (finance tools) and is
+ * the live consequential payout action: it is gated here so it cannot execute
+ * without human approval, and even an approved call reaches only a documented
+ * stub (no live payment rail). `marketing_spend` stays reserved for P2B07.
  */
 export const CONSEQUENTIAL_TOOLS: readonly string[] = [
   "deliver_release",
@@ -101,6 +108,12 @@ export interface BuildLabelAgentDeps {
    */
   polarClient?: PolarClient;
   /**
+   * Maps a product id → the release id it sells, so the finance `ingest_revenue`
+   * tool can attribute D2C order revenue to a release. Optional (defaults to no
+   * attribution).
+   */
+  productReleaseMap?: ProductReleaseMap;
+  /**
    * P2B04 ApprovalGate wiring. When supplied, the agent's tool execution passes
    * through the generic ApprovalGate: consequential calls (CONSEQUENTIAL_TOOLS)
    * are blocked pending approval and EVERY tool call is audited. The run context
@@ -142,6 +155,7 @@ export function buildLabelAgent({
   skills = [],
   memoryFacts = [],
   polarClient,
+  productReleaseMap = {},
   approval,
 }: BuildLabelAgentDeps): LabelAgent {
   const planState = new PlanState();
@@ -149,6 +163,7 @@ export function buildLabelAgent({
     ...getBuiltinTools(),
     ...getLabelTools(),
     ...getDistributionTools(),
+    ...getFinanceTools(productReleaseMap),
     buildWritePlanTool(planState),
   ];
   if (polarClient) {

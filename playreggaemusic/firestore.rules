@@ -81,6 +81,23 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Royalties & finance (P2B05, F7): revenue events, per-artist recoupment
+    // accounts, royalty statements, and payout records. All carry SENSITIVE
+    // financial data — deny ALL client access. The admin SDK bypasses rules so
+    // the engine + admin callables still read/write; no client may.
+    match /revenue_events/{doc=**} {
+      allow read, write: if false;
+    }
+    match /recoupment/{doc=**} {
+      allow read, write: if false;
+    }
+    match /royalty_statements/{doc=**} {
+      allow read, write: if false;
+    }
+    match /payouts/{doc=**} {
+      allow read, write: if false;
+    }
+
     // Engine collections: deny ALL client access. The admin SDK bypasses
     // rules, so the runtime is unaffected; no client may read or write.
     match /threads/{doc=**} {

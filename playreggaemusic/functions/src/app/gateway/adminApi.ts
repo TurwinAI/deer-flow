@@ -53,6 +53,18 @@ import type {
 import { deliverRelease, scheduleRelease } from "../distribution/release";
 import type { DistributionRecord } from "../distribution/store";
 import { DdexDistributorClient, type DistributorClient } from "../distribution/client";
+import {
+  PolarRevenueSource,
+  FakeDistributorRevenueSource,
+  FakePRORevenueSource,
+  ingestRevenue,
+  type RevenueIngestResult,
+  type ProductReleaseMap,
+  type RevenueEvent,
+  type RevenueSource,
+} from "../finance/revenue";
+import { generateStatement, listStatements, type RoyaltyStatement } from "../finance/statements";
+import { proposePayout, type Payout } from "../finance/payout";
 import { buildLabelAgent } from "../agent/leadAgent";
 import { createChatModel } from "../../harness/models";
 import type { ChatModelLike } from "../../harness/runtime";
@@ -198,6 +210,43 @@ const approveSchema = z.object({
 
 const listAuditSchema = z.object({
   threadId: z.string().min(1),
+});
+
+// Finance (P2B05, F7) schemas.
+const revenueEventInputSchema = z.object({
+  id: z.string().min(1),
+  releaseId: z.string().min(1).optional(),
+  trackId: z.string().min(1).optional(),
+  grossCents: z.number().int(),
+  currency: z.string().min(1),
+  occurredAt: z.string().min(1),
+});
+
+const ingestRevenueSchema = z.object({
+  period: z.string().min(1),
+  /** Optional product→release map so D2C order revenue is attributed. */
+  productReleaseMap: z.record(z.string(), z.string()).optional(),
+  /** Optional deterministic distributor (DSP) income fixtures. */
+  distributorEvents: z.array(revenueEventInputSchema).optional(),
+  /** Optional deterministic PRO (publishing) income fixtures. */
+  proEvents: z.array(revenueEventInputSchema).optional(),
+});
+
+const generateStatementApiSchema = z.object({
+  artistId: z.string().min(1),
+  period: z.string().min(1),
+  deductionsCents: z.number().int().nonnegative().optional(),
+  payeeName: z.string().min(1).optional(),
+});
+
+const listStatementsSchema = z.object({
+  artistId: z.string().min(1).optional(),
+});
+
+const proposePayoutApiSchema = z.object({
+  artistId: z.string().min(1),
+  statementId: z.string().min(1),
+  currency: z.string().min(1).optional(),
 });
 
 function parse<T>(schema: z.ZodType<T>, data: unknown): T {
@@ -556,6 +605,75 @@ export async function handleListAudit(
 }
 
 // ---------------------------------------------------------------------------
+// Royalties & finance (P2B05, F7) — admin-guarded ingestion, statements, and
+// payout PROPOSALS. Revenue ingestion reads the local Polar `orders` mirror
+// (no network) and, when supplied, deterministic distributor/PRO fixtures. The
+// REAL distributor/PRO revenue sources are operator-side and are NEVER wired in
+// here. proposePayout writes a "proposed" record only — there is NO live payout.
+// ---------------------------------------------------------------------------
+
+/**
+ * Ingest revenue for a period into the admin-only `revenue_events` store. Always
+ * pulls the local Polar `orders` mirror; optionally also ingests deterministic
+ * distributor/PRO fixtures supplied by the caller. No live revenue API is ever
+ * reached.
+ */
+export async function handleIngestRevenue(req: AdminRequest<unknown>): Promise<RevenueIngestResult> {
+  assertAdmin(req.auth);
+  const input = parse(ingestRevenueSchema, req.data);
+  const map: ProductReleaseMap = input.productReleaseMap ?? {};
+  const sources: RevenueSource[] = [new PolarRevenueSource(map)];
+  if (input.distributorEvents && input.distributorEvents.length > 0) {
+    sources.push(new FakeDistributorRevenueSource(input.distributorEvents as Omit<RevenueEvent, "source">[]));
+  }
+  if (input.proEvents && input.proEvents.length > 0) {
+    sources.push(new FakePRORevenueSource(input.proEvents as Omit<RevenueEvent, "source">[]));
+  }
+  return ingestRevenue(sources, input.period);
+}
+
+/** Generate + store a per-artist royalty statement (totals reconcile). */
+export async function handleGenerateStatement(
+  req: AdminRequest<unknown>,
+): Promise<RoyaltyStatement> {
+  assertAdmin(req.auth);
+  const input = parse(generateStatementApiSchema, req.data);
+  try {
+    return await generateStatement(input.artistId, input.period, {
+      deductionsCents: input.deductionsCents,
+      payeeName: input.payeeName,
+    });
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/** List stored royalty statements, optionally filtered to one artist. */
+export async function handleListStatements(
+  req: AdminRequest<unknown>,
+): Promise<RoyaltyStatement[]> {
+  assertAdmin(req.auth);
+  const input = parse(listStatementsSchema, req.data);
+  return listStatements(input.artistId);
+}
+
+/**
+ * Propose a payout for an artist's statement (status "proposed", amount =
+ * statement net). Does NOT pay — executing a payout is consequential and gated
+ * by the ApprovalGate's `initiate_payout`. Unknown-statement errors surface as
+ * `invalid-argument`.
+ */
+export async function handleProposePayout(req: AdminRequest<unknown>): Promise<Payout> {
+  assertAdmin(req.auth);
+  const input = parse(proposePayoutApiSchema, req.data);
+  try {
+    return await proposePayout(input.artistId, input.statementId, { currency: input.currency });
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Callable bindings — thin adapters from CallableRequest to the pure handlers.
 // ---------------------------------------------------------------------------
 
@@ -613,3 +731,18 @@ export const adminListPendingApprovals = onCall((request) =>
 );
 export const adminApprove = onCall((request) => handleApprove(toAdminRequest(request)));
 export const adminListAudit = onCall((request) => handleListAudit(toAdminRequest(request)));
+
+// Finance callables (P2B05, F7): ingest revenue, generate/list statements, and
+// propose payouts. Admin-guarded; no secrets needed (no live revenue/payout).
+export const adminIngestRevenue = onCall((request) =>
+  handleIngestRevenue(toAdminRequest(request)),
+);
+export const adminGenerateStatement = onCall((request) =>
+  handleGenerateStatement(toAdminRequest(request)),
+);
+export const adminListStatements = onCall((request) =>
+  handleListStatements(toAdminRequest(request)),
+);
+export const adminProposePayout = onCall((request) =>
+  handleProposePayout(toAdminRequest(request)),
+);

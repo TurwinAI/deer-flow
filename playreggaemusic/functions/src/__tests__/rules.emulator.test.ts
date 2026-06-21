@@ -82,10 +82,18 @@ describe.skipIf(RUN)("firestore.rules (emulator)", () => {
       await setDoc(doc(db, "audit_log", "a1"), { threadId: "t1", tool: "echo" });
       await setDoc(doc(db, "pending_approvals", "ap1"), { tool: "deliver_release", status: "pending" });
       await setDoc(doc(db, "scheduled_runs", "sr1"), { threadId: "t1", prompt: "go" });
+      // P2B05 finance collections — admin-only / deny ALL client access.
+      await setDoc(doc(db, "revenue_events", "rev1"), { id: "rev1", source: "polar", grossCents: 700 });
+      await setDoc(doc(db, "recoupment", "roots-untold"), { artistId: "roots-untold", advanceCents: 1000, recoupedCents: 0 });
+      await setDoc(doc(db, "royalty_statements", "roots-untold__2026-Q2"), { artistId: "roots-untold", netCents: 300 });
+      await setDoc(doc(db, "payouts", "payout__roots-untold__2026-Q2"), { artistId: "roots-untold", amountCents: 300, status: "proposed" });
     });
   });
 
   afterAll(async () => {
+    // Clear seeded docs so this suite does not pollute the shared emulator for
+    // other suites (e.g. the recoupment/roots-untold account read by finance).
+    await testEnv.clearFirestore();
     await testEnv.cleanup();
   });
 
@@ -283,6 +291,56 @@ describe.skipIf(RUN)("firestore.rules (emulator)", () => {
     const db = testEnv.authenticatedContext("fan").firestore();
     await assertFails(getDoc(doc(db, "scheduled_runs", "sr1")));
     await assertFails(setDoc(doc(db, "scheduled_runs", "evil2"), { prompt: "hax" }));
+  });
+
+  // -- P2B05 finance: revenue_events / recoupment / royalty_statements / payouts
+
+  it("anon CANNOT read or write revenue_events", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, "revenue_events", "rev1")));
+    await assertFails(setDoc(doc(db, "revenue_events", "evil"), { grossCents: 1 }));
+  });
+
+  it("non-admin authenticated user CANNOT read or write revenue_events", async () => {
+    const db = testEnv.authenticatedContext("fan").firestore();
+    await assertFails(getDoc(doc(db, "revenue_events", "rev1")));
+    await assertFails(setDoc(doc(db, "revenue_events", "evil2"), { grossCents: 1 }));
+  });
+
+  it("anon CANNOT read or write recoupment accounts", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, "recoupment", "roots-untold")));
+    await assertFails(setDoc(doc(db, "recoupment", "evil"), { advanceCents: 0 }));
+  });
+
+  it("non-admin authenticated user CANNOT read or write recoupment accounts", async () => {
+    const db = testEnv.authenticatedContext("fan").firestore();
+    await assertFails(getDoc(doc(db, "recoupment", "roots-untold")));
+    await assertFails(setDoc(doc(db, "recoupment", "evil2"), { recoupedCents: 0 }));
+  });
+
+  it("anon CANNOT read or write royalty_statements", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, "royalty_statements", "roots-untold__2026-Q2")));
+    await assertFails(setDoc(doc(db, "royalty_statements", "evil"), { netCents: 0 }));
+  });
+
+  it("non-admin authenticated user CANNOT read or write royalty_statements", async () => {
+    const db = testEnv.authenticatedContext("fan").firestore();
+    await assertFails(getDoc(doc(db, "royalty_statements", "roots-untold__2026-Q2")));
+    await assertFails(setDoc(doc(db, "royalty_statements", "evil2"), { netCents: 0 }));
+  });
+
+  it("anon CANNOT read or write payouts (cannot self-pay)", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, "payouts", "payout__roots-untold__2026-Q2")));
+    await assertFails(setDoc(doc(db, "payouts", "evil"), { amountCents: 999999, status: "executed-stub" }));
+  });
+
+  it("non-admin authenticated user CANNOT read or write payouts (cannot self-pay)", async () => {
+    const db = testEnv.authenticatedContext("fan").firestore();
+    await assertFails(getDoc(doc(db, "payouts", "payout__roots-untold__2026-Q2")));
+    await assertFails(setDoc(doc(db, "payouts", "evil2"), { amountCents: 999999, status: "executed-stub" }));
   });
 
   it("expectations registered", () => {
