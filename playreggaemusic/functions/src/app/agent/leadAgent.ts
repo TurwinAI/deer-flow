@@ -25,6 +25,8 @@ import {
 import { getLabelTools } from "../label/tools";
 import { getDistributionTools } from "../distribution/tools";
 import { getFinanceTools } from "../finance/tools";
+import { getPublishingTools } from "../publishing/tools";
+import type { ProRegistrar } from "../publishing/pro";
 import type { ProductReleaseMap } from "../finance/revenue";
 import { createCheckoutForProduct } from "../polar/checkout";
 import type { PolarClient } from "../polar/client";
@@ -46,11 +48,18 @@ import type { PolarClient } from "../polar/client";
  * the live consequential payout action: it is gated here so it cannot execute
  * without human approval, and even an approved call reaches only a documented
  * stub (no live payment rail). `marketing_spend` stays reserved for P2B07.
+ *
+ * `issue_sync_license` (P2B06, F9) IS exposed to the agent (publishing tools)
+ * and is the binding sync-licensing commitment: it is gated here so the agent
+ * cannot issue a license without explicit human approval. Even an approved call
+ * stamps only a CLEARLY-MARKED placeholder license text (owner supplies binding
+ * wording before go-live).
  */
 export const CONSEQUENTIAL_TOOLS: readonly string[] = [
   "deliver_release",
   "initiate_payout",
   "marketing_spend",
+  "issue_sync_license",
 ];
 
 const createCheckoutSchema = z.object({
@@ -114,6 +123,12 @@ export interface BuildLabelAgentDeps {
    */
   productReleaseMap?: ProductReleaseMap;
   /**
+   * PRO/MLC registrar backing the `register_pro_affiliation` tool (P2B06).
+   * Injected so the autonomy gate uses FakeProRegistrar (no live PRO/MLC call).
+   * Defaults to a FakeProRegistrar when omitted.
+   */
+  proRegistrar?: ProRegistrar;
+  /**
    * P2B04 ApprovalGate wiring. When supplied, the agent's tool execution passes
    * through the generic ApprovalGate: consequential calls (CONSEQUENTIAL_TOOLS)
    * are blocked pending approval and EVERY tool call is audited. The run context
@@ -156,6 +171,7 @@ export function buildLabelAgent({
   memoryFacts = [],
   polarClient,
   productReleaseMap = {},
+  proRegistrar,
   approval,
 }: BuildLabelAgentDeps): LabelAgent {
   const planState = new PlanState();
@@ -164,6 +180,7 @@ export function buildLabelAgent({
     ...getLabelTools(),
     ...getDistributionTools(),
     ...getFinanceTools(productReleaseMap),
+    ...getPublishingTools(proRegistrar),
     buildWritePlanTool(planState),
   ];
   if (polarClient) {

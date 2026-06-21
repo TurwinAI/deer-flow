@@ -65,6 +65,28 @@ import {
 } from "../finance/revenue";
 import { generateStatement, listStatements, type RoyaltyStatement } from "../finance/statements";
 import { proposePayout, type Payout } from "../finance/payout";
+import {
+  registerWork,
+  setWriterSplits,
+  type Work,
+  type WorkSplits,
+} from "../publishing/works";
+import {
+  registerProAffiliation,
+  RealProRegistrar,
+  type Pro,
+  type ProAffiliation,
+  type ProRegistrar,
+  type ProRegistrationConfirmation,
+} from "../publishing/pro";
+import {
+  addToSyncCatalog,
+  clearSyncLicense,
+  issueSyncLicense,
+  requestSyncLicense,
+  type SyncCatalogEntry,
+  type SyncLicense,
+} from "../publishing/sync";
 import { buildLabelAgent } from "../agent/leadAgent";
 import { createChatModel } from "../../harness/models";
 import type { ChatModelLike } from "../../harness/runtime";
@@ -247,6 +269,54 @@ const proposePayoutApiSchema = z.object({
   artistId: z.string().min(1),
   statementId: z.string().min(1),
   currency: z.string().min(1).optional(),
+});
+
+// Publishing & sync (P2B06, F8/F9) schemas.
+const registerWorkApiSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  iswc: z.string().min(1).optional(),
+  linkedIsrcs: z.array(z.string().min(1)).default([]),
+});
+
+const setWriterSplitsApiSchema = z.object({
+  workId: z.string().min(1),
+  splits: z.array(z.object({ payee: z.string().min(1), percent: z.number() })),
+});
+
+const registerProAffiliationApiSchema = z.object({
+  writerId: z.string().min(1),
+  pro: z.enum(["ASCAP", "BMI", "SESAC", "MLC"]),
+  ipi: z.string().min(1).optional(),
+  memberId: z.string().min(1).optional(),
+});
+
+const addToSyncCatalogApiSchema = z.object({
+  recordingId: z.string().min(1),
+  workId: z.string().min(1),
+  title: z.string().min(1),
+  available: z.boolean().optional(),
+});
+
+const requestSyncLicenseApiSchema = z.object({
+  id: z.string().min(1),
+  recordingId: z.string().min(1),
+  workId: z.string().min(1),
+  licensee: z.string().min(1),
+  mediaType: z.string().min(1),
+  territory: z.string().min(1),
+  termMonths: z.number().int().positive(),
+  feeCents: z.number().int().nonnegative(),
+});
+
+const clearSyncLicenseApiSchema = z.object({
+  licenseId: z.string().min(1),
+});
+
+const issueSyncLicenseApiSchema = z.object({
+  licenseId: z.string().min(1),
+  // The admin explicitly approving this CONSEQUENTIAL, binding action. Required true.
+  approved: z.literal(true),
 });
 
 function parse<T>(schema: z.ZodType<T>, data: unknown): T {
@@ -674,6 +744,134 @@ export async function handleProposePayout(req: AdminRequest<unknown>): Promise<P
 }
 
 // ---------------------------------------------------------------------------
+// Publishing & sync (P2B06, F8/F9) — admin-guarded works registry, writer
+// splits, PRO/MLC affiliation, sync catalog, and the sync-license flow. Writer
+// splits go ONLY to the admin-only work_splits collection (never the public
+// works doc). The PRO registrar is INJECTED; production passes a RealProRegistrar
+// (throws without operator creds), tests pass a FakeProRegistrar — NO live
+// PRO/MLC call in any test. `issueSyncLicense` is CONSEQUENTIAL and is gated on
+// the admin explicitly approving (`approved: true`), mirroring adminDeliverRelease.
+// ---------------------------------------------------------------------------
+
+/** Register a composition (PUBLIC works doc only — never writer splits). */
+export async function handleRegisterWork(req: AdminRequest<unknown>): Promise<Work> {
+  assertAdmin(req.auth);
+  const input = parse(registerWorkApiSchema, req.data);
+  try {
+    return await registerWork({
+      id: input.id,
+      title: input.title,
+      iswc: input.iswc,
+      linkedIsrcs: input.linkedIsrcs ?? [],
+    });
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/** Set a work's SENSITIVE writer splits (admin-only work_splits; must sum 100). */
+export async function handleSetWriterSplits(req: AdminRequest<unknown>): Promise<WorkSplits> {
+  assertAdmin(req.auth);
+  const input = parse(setWriterSplitsApiSchema, req.data);
+  try {
+    return await setWriterSplits(
+      input.workId,
+      input.splits.map((s) => ({ payee: s.payee, percent: s.percent })),
+    );
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/**
+ * Register a writer's PRO/MLC affiliation via the injected registrar, then
+ * persist it to the admin-only pro_affiliations collection. Production passes a
+ * RealProRegistrar (which throws without operator-supplied PRO_API_TOKEN at
+ * handoff); unit tests pass a FakeProRegistrar so NO live call is made.
+ */
+export async function handleRegisterProAffiliation(
+  req: AdminRequest<unknown>,
+  registrar: ProRegistrar = new RealProRegistrar(),
+): Promise<ProRegistrationConfirmation> {
+  assertAdmin(req.auth);
+  const input = parse(registerProAffiliationApiSchema, req.data);
+  const affiliation: ProAffiliation = {
+    writerId: input.writerId,
+    pro: input.pro as Pro,
+    ipi: input.ipi,
+    memberId: input.memberId,
+  };
+  try {
+    return await registerProAffiliation(affiliation, registrar);
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/** Add a recording to the PUBLIC sync catalog (admin-write). */
+export async function handleAddToSyncCatalog(req: AdminRequest<unknown>): Promise<SyncCatalogEntry> {
+  assertAdmin(req.auth);
+  const input = parse(addToSyncCatalogApiSchema, req.data);
+  try {
+    return await addToSyncCatalog({
+      recordingId: input.recordingId,
+      workId: input.workId,
+      title: input.title,
+      available: input.available,
+    });
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/** Record an inbound sync-license REQUEST (status "requested"). */
+export async function handleRequestSyncLicense(req: AdminRequest<unknown>): Promise<SyncLicense> {
+  assertAdmin(req.auth);
+  const input = parse(requestSyncLicenseApiSchema, req.data);
+  try {
+    return await requestSyncLicense({
+      id: input.id,
+      recordingId: input.recordingId,
+      workId: input.workId,
+      licensee: input.licensee,
+      mediaType: input.mediaType,
+      territory: input.territory,
+      termMonths: input.termMonths,
+      feeCents: input.feeCents,
+    });
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/** Clear a requested sync license (verify master + composition). */
+export async function handleClearSyncLicense(req: AdminRequest<unknown>): Promise<SyncLicense> {
+  assertAdmin(req.auth);
+  const input = parse(clearSyncLicenseApiSchema, req.data);
+  try {
+    return await clearSyncLicense(input.licenseId);
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/**
+ * Issue a CLEARED sync license (CONSEQUENTIAL). The admin passing `approved:
+ * true` represents the human-in-the-loop approval; the schema requires it (a
+ * missing/false `approved` is rejected as `invalid-argument` before any issue).
+ * Stamps the placeholder license text + status "issued".
+ */
+export async function handleIssueSyncLicense(req: AdminRequest<unknown>): Promise<SyncLicense> {
+  assertAdmin(req.auth);
+  const input = parse(issueSyncLicenseApiSchema, req.data);
+  try {
+    return await issueSyncLicense(input.licenseId);
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Callable bindings — thin adapters from CallableRequest to the pure handlers.
 // ---------------------------------------------------------------------------
 
@@ -745,4 +943,30 @@ export const adminListStatements = onCall((request) =>
 );
 export const adminProposePayout = onCall((request) =>
   handleProposePayout(toAdminRequest(request)),
+);
+
+// Publishing & sync callables (P2B06, F8/F9). Admin-guarded. `adminRegisterPro
+// Affiliation` binds the PRO_API_TOKEN secret so the RealProRegistrar can read
+// it at runtime (operator-supplied at handoff) — it throws without it, and NO
+// live PRO/MLC call occurs in any test (unit tests inject a FakeProRegistrar).
+const proApiToken = defineSecret("PRO_API_TOKEN");
+
+export const adminRegisterWork = onCall((request) => handleRegisterWork(toAdminRequest(request)));
+export const adminSetWriterSplits = onCall((request) =>
+  handleSetWriterSplits(toAdminRequest(request)),
+);
+export const adminRegisterProAffiliation = onCall({ secrets: [proApiToken] }, (request) =>
+  handleRegisterProAffiliation(toAdminRequest(request)),
+);
+export const adminAddToSyncCatalog = onCall((request) =>
+  handleAddToSyncCatalog(toAdminRequest(request)),
+);
+export const adminRequestSyncLicense = onCall((request) =>
+  handleRequestSyncLicense(toAdminRequest(request)),
+);
+export const adminClearSyncLicense = onCall((request) =>
+  handleClearSyncLicense(toAdminRequest(request)),
+);
+export const adminIssueSyncLicense = onCall((request) =>
+  handleIssueSyncLicense(toAdminRequest(request)),
 );

@@ -67,6 +67,35 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Publishing & sync (P2B06, F8/F9). The works registry + sync catalog are
+    // PUBLIC transparency artifacts (world-readable, admin-write); writer splits,
+    // PRO/MLC affiliations, and sync licenses are SENSITIVE and admin-only (deny
+    // ALL client access). The admin SDK bypasses rules so the engine + admin
+    // callables still read/write; no client may touch the sensitive collections.
+    match /works/{doc} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /sync_catalog/{doc} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    // SENSITIVE writer splits (work_splits/{workId}): never publicly readable —
+    // splits stay out of the public works doc, exactly like rights/track_masters.
+    match /work_splits/{doc=**} {
+      allow read, write: if false;
+    }
+    // SENSITIVE PRO/MLC affiliations (pro_affiliations/{writerId}): member/IPI
+    // ids — deny ALL client access.
+    match /pro_affiliations/{doc=**} {
+      allow read, write: if false;
+    }
+    // SENSITIVE sync licenses (sync_licenses/{id}): licensee/fee/binding terms —
+    // deny ALL client access.
+    match /sync_licenses/{doc=**} {
+      allow read, write: if false;
+    }
+
     // Autonomy orchestration (P2B04, F12): the agent audit log, pending
     // human-approval requests, and scheduled autonomous runs. All are
     // OPERATIONAL/admin-only — deny ALL client access. The admin SDK bypasses

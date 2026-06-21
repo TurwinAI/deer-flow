@@ -87,6 +87,37 @@ describe.skipIf(RUN)("firestore.rules (emulator)", () => {
       await setDoc(doc(db, "recoupment", "roots-untold"), { artistId: "roots-untold", advanceCents: 1000, recoupedCents: 0 });
       await setDoc(doc(db, "royalty_statements", "roots-untold__2026-Q2"), { artistId: "roots-untold", netCents: 300 });
       await setDoc(doc(db, "payouts", "payout__roots-untold__2026-Q2"), { artistId: "roots-untold", amountCents: 300, status: "proposed" });
+      // P2B06 publishing & sync. works + sync_catalog are PUBLIC transparency
+      // artifacts; work_splits / pro_affiliations / sync_licenses are admin-only.
+      await setDoc(doc(db, "works", "work1"), {
+        id: "work1",
+        title: "Foundation Stones",
+        iswc: "T0000000010",
+        linkedIsrcs: ["USRC12600001"],
+      });
+      await setDoc(doc(db, "sync_catalog", "USRC12600001"), {
+        recordingId: "USRC12600001",
+        workId: "work1",
+        title: "Foundation Stones",
+        available: true,
+      });
+      await setDoc(doc(db, "work_splits", "work1"), {
+        workId: "work1",
+        writerSplits: [{ payee: "Roots Untold", percent: 100 }],
+      });
+      await setDoc(doc(db, "pro_affiliations", "roots-untold"), {
+        writerId: "roots-untold",
+        pro: "ASCAP",
+        memberId: "M-1",
+      });
+      await setDoc(doc(db, "sync_licenses", "lic1"), {
+        id: "lic1",
+        recordingId: "USRC12600001",
+        workId: "work1",
+        licensee: "Acme Films",
+        status: "issued",
+        feeCents: 500000,
+      });
     });
   });
 
@@ -341,6 +372,71 @@ describe.skipIf(RUN)("firestore.rules (emulator)", () => {
     const db = testEnv.authenticatedContext("fan").firestore();
     await assertFails(getDoc(doc(db, "payouts", "payout__roots-untold__2026-Q2")));
     await assertFails(setDoc(doc(db, "payouts", "evil2"), { amountCents: 999999, status: "executed-stub" }));
+  });
+
+  // -- P2B06 publishing & sync: works + sync_catalog public; work_splits /
+  //    pro_affiliations / sync_licenses admin-only.
+
+  it("public CAN read the works registry (transparency artifact)", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    const snap = await assertSucceeds(getDoc(doc(db, "works", "work1")));
+    expect(snap.data()?.title).toBe("Foundation Stones");
+    expect(snap.data()?.iswc).toBe("T0000000010");
+  });
+
+  it("public CAN read the sync catalog (what's available for sync)", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    const snap = await assertSucceeds(getDoc(doc(db, "sync_catalog", "USRC12600001")));
+    expect(snap.data()?.workId).toBe("work1");
+    expect(snap.data()?.available).toBe(true);
+  });
+
+  it("anon CANNOT write works or sync_catalog (admin-write only)", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(setDoc(doc(db, "works", "evilwork"), { title: "hax" }));
+    await assertFails(setDoc(doc(db, "sync_catalog", "evilrec"), { workId: "hax" }));
+  });
+
+  it("non-admin authenticated user CANNOT write works or sync_catalog", async () => {
+    const db = testEnv.authenticatedContext("fan").firestore();
+    await assertFails(setDoc(doc(db, "works", "evilwork2"), { title: "hax" }));
+    await assertFails(setDoc(doc(db, "sync_catalog", "evilrec2"), { workId: "hax" }));
+  });
+
+  it("anon CANNOT read or write work_splits (writer splits stay private)", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, "work_splits", "work1")));
+    await assertFails(setDoc(doc(db, "work_splits", "evil"), { writerSplits: [] }));
+  });
+
+  it("non-admin authenticated user CANNOT read or write work_splits", async () => {
+    const db = testEnv.authenticatedContext("fan").firestore();
+    await assertFails(getDoc(doc(db, "work_splits", "work1")));
+    await assertFails(setDoc(doc(db, "work_splits", "evil2"), { writerSplits: [] }));
+  });
+
+  it("anon CANNOT read or write pro_affiliations", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, "pro_affiliations", "roots-untold")));
+    await assertFails(setDoc(doc(db, "pro_affiliations", "evil"), { pro: "ASCAP" }));
+  });
+
+  it("non-admin authenticated user CANNOT read or write pro_affiliations", async () => {
+    const db = testEnv.authenticatedContext("fan").firestore();
+    await assertFails(getDoc(doc(db, "pro_affiliations", "roots-untold")));
+    await assertFails(setDoc(doc(db, "pro_affiliations", "evil2"), { pro: "ASCAP" }));
+  });
+
+  it("anon CANNOT read or write sync_licenses (binding terms/fee stay private)", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, "sync_licenses", "lic1")));
+    await assertFails(setDoc(doc(db, "sync_licenses", "evil"), { status: "issued" }));
+  });
+
+  it("non-admin authenticated user CANNOT read or write sync_licenses", async () => {
+    const db = testEnv.authenticatedContext("fan").firestore();
+    await assertFails(getDoc(doc(db, "sync_licenses", "lic1")));
+    await assertFails(setDoc(doc(db, "sync_licenses", "evil2"), { status: "issued" }));
   });
 
   it("expectations registered", () => {
