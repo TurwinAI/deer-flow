@@ -43,6 +43,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // SENSITIVE ownership splits (rights/{releaseId}): deny ALL client access.
+    // Splits are commercially sensitive and must never be publicly readable.
+    // The admin SDK bypasses rules, so the engine still reads/writes; no client
+    // may read or write — the splits stay out of the public release doc/page.
+    match /rights/{doc=**} {
+      allow read, write: if false;
+    }
+
     // Engine collections: deny ALL client access. The admin SDK bypasses
     // rules, so the runtime is unaffected; no client may read or write.
     match /threads/{doc=**} {

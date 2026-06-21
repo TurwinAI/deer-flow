@@ -37,10 +37,27 @@ describe.skipIf(RUN)("firestore.rules (emulator)", () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       const db = ctx.firestore();
       await setDoc(doc(db, "artists", "roots-untold"), { name: "Roots Untold" });
-      await setDoc(doc(db, "tracks", "trk1"), { title: "Foundation Stones" });
+      // Releases/tracks now carry PUBLIC identifiers (isrc/upc/credits).
+      await setDoc(doc(db, "releases", "rel1"), {
+        title: "Foundation Stones",
+        upc: "196633982100",
+        credits: [{ role: "Producer", name: "PlayReggaeMusic.ai" }],
+      });
+      await setDoc(doc(db, "tracks", "trk1"), {
+        title: "Foundation Stones",
+        isrc: "USRUM2600001",
+      });
       await setDoc(doc(db, "track_masters", "trk1"), {
         trackId: "trk1",
         masterPath: "masters/foundation-stones/01.wav",
+      });
+      // SENSITIVE ownership splits — must NOT be publicly readable.
+      await setDoc(doc(db, "rights", "rel1"), {
+        releaseId: "rel1",
+        ownershipSplits: [
+          { payee: "PlayReggaeMusic.ai", percent: 70 },
+          { payee: "Roots Untold", percent: 30 },
+        ],
       });
       await setDoc(doc(db, "products", "prod1"), { title: "Download" });
       await setDoc(doc(db, "orders", "o1"), { customer: "cus_test" });
@@ -67,6 +84,19 @@ describe.skipIf(RUN)("firestore.rules (emulator)", () => {
   it("public CAN read catalog products", async () => {
     const db = testEnv.unauthenticatedContext().firestore();
     await assertSucceeds(getDoc(doc(db, "products", "prod1")));
+  });
+
+  it("public CAN read a release carrying PUBLIC upc/credits", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    const snap = await assertSucceeds(getDoc(doc(db, "releases", "rel1")));
+    expect(snap.data()?.upc).toBe("196633982100");
+    expect(Array.isArray(snap.data()?.credits)).toBe(true);
+  });
+
+  it("public CAN read a track carrying a PUBLIC isrc", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    const snap = await assertSucceeds(getDoc(doc(db, "tracks", "trk1")));
+    expect(snap.data()?.isrc).toBe("USRUM2600001");
   });
 
   it("public CANNOT write catalog artists without admin", async () => {
@@ -116,6 +146,26 @@ describe.skipIf(RUN)("firestore.rules (emulator)", () => {
     const db = testEnv.unauthenticatedContext().firestore();
     await assertFails(
       setDoc(doc(db, "track_masters", "evilmaster"), { masterPath: "masters/hax.wav" }),
+    );
+  });
+
+  it("anon CANNOT read private rights (ownership splits stay private)", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, "rights", "rel1")));
+  });
+
+  it("non-admin authenticated user CANNOT read private rights", async () => {
+    const db = testEnv.authenticatedContext("fan").firestore();
+    await assertFails(getDoc(doc(db, "rights", "rel1")));
+  });
+
+  it("anon CANNOT write rights", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(
+      setDoc(doc(db, "rights", "evilrights"), {
+        releaseId: "evil",
+        ownershipSplits: [{ payee: "hax", percent: 100 }],
+      }),
     );
   });
 

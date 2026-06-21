@@ -9,7 +9,24 @@
  */
 import type { Firestore } from "firebase-admin/firestore";
 import { getDb } from "../../harness/persistence/firestore";
-import type { Artist, Order, Product, Release, Track, TrackMaster } from "./index";
+import type {
+  Artist,
+  Credit,
+  Order,
+  Product,
+  Release,
+  RightsRecord,
+  Split,
+  Track,
+  TrackMaster,
+} from "./index";
+import {
+  isValidISRC,
+  isValidUPC,
+  normalizeISRC,
+  normalizeUPC,
+  validateSplits,
+} from "./identifiers";
 
 const ARTISTS = "artists";
 const RELEASES = "releases";
@@ -17,6 +34,7 @@ const TRACKS = "tracks";
 const TRACK_MASTERS = "track_masters";
 const PRODUCTS = "products";
 const ORDERS = "orders";
+const RIGHTS = "rights";
 
 function db(override?: Firestore): Firestore {
   return override ?? getDb();
@@ -57,9 +75,56 @@ export async function listArtists(store?: Firestore): Promise<Artist[]> {
 // Releases
 // ---------------------------------------------------------------------------
 
+/**
+ * Validate + normalize the PUBLIC identifier fields on a release. Rejects an
+ * invalid UPC/EAN check digit. Returns a copy with `upc` normalized. Throws on
+ * invalid input so no bad identifier is ever persisted.
+ */
+function normalizeReleaseIdentifiers(release: Release): Release {
+  const next: Release = { ...release };
+  if (release.upc !== undefined) {
+    if (!isValidUPC(release.upc)) {
+      throw new Error(`Invalid UPC/EAN barcode: ${release.upc}`);
+    }
+    next.upc = normalizeUPC(release.upc);
+  }
+  return next;
+}
+
 export async function createRelease(release: Release, store?: Firestore): Promise<Release> {
-  await db(store).collection(RELEASES).doc(release.id).set(pruneUndefined({ ...release }));
-  return release;
+  const normalized = normalizeReleaseIdentifiers(release);
+  await db(store).collection(RELEASES).doc(normalized.id).set(pruneUndefined({ ...normalized }));
+  return normalized;
+}
+
+/**
+ * Set the PUBLIC release identifiers (UPC + credits) on an existing release
+ * doc, validating the UPC check digit. Merges so other release fields are
+ * untouched. Throws if the release does not exist or the UPC is invalid.
+ */
+export async function setReleaseIdentifiers(
+  releaseId: string,
+  identifiers: { upc?: string; credits?: Credit[] },
+  store?: Firestore,
+): Promise<Release> {
+  const ref = db(store).collection(RELEASES).doc(releaseId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    throw new Error(`Unknown release: ${releaseId}`);
+  }
+  const update: { upc?: string; credits?: Credit[] } = {};
+  if (identifiers.upc !== undefined) {
+    if (!isValidUPC(identifiers.upc)) {
+      throw new Error(`Invalid UPC/EAN barcode: ${identifiers.upc}`);
+    }
+    update.upc = normalizeUPC(identifiers.upc);
+  }
+  if (identifiers.credits !== undefined) {
+    update.credits = identifiers.credits;
+  }
+  await ref.set(pruneUndefined({ ...update }), { merge: true });
+  const updated = await ref.get();
+  return updated.data() as Release;
 }
 
 export async function getRelease(id: string, store?: Firestore): Promise<Release | undefined> {
@@ -79,9 +144,48 @@ export async function listReleasesByArtist(
 // Tracks
 // ---------------------------------------------------------------------------
 
+/**
+ * Validate + normalize the PUBLIC identifier on a track. Rejects an invalid
+ * ISRC. Returns a copy with `isrc` normalized. Throws on invalid input.
+ */
+function normalizeTrackIdentifiers(track: Track): Track {
+  const next: Track = { ...track };
+  if (track.isrc !== undefined) {
+    if (!isValidISRC(track.isrc)) {
+      throw new Error(`Invalid ISRC: ${track.isrc}`);
+    }
+    next.isrc = normalizeISRC(track.isrc);
+  }
+  return next;
+}
+
 export async function createTrack(track: Track, store?: Firestore): Promise<Track> {
-  await db(store).collection(TRACKS).doc(track.id).set(pruneUndefined({ ...track }));
-  return track;
+  const normalized = normalizeTrackIdentifiers(track);
+  await db(store).collection(TRACKS).doc(normalized.id).set(pruneUndefined({ ...normalized }));
+  return normalized;
+}
+
+/**
+ * Set a track's PUBLIC ISRC on an existing track doc, validating the format.
+ * Merges so other track fields are untouched. Throws if the track does not
+ * exist or the ISRC is invalid. Returns the updated track.
+ */
+export async function setTrackISRC(
+  trackId: string,
+  isrc: string,
+  store?: Firestore,
+): Promise<Track> {
+  if (!isValidISRC(isrc)) {
+    throw new Error(`Invalid ISRC: ${isrc}`);
+  }
+  const ref = db(store).collection(TRACKS).doc(trackId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    throw new Error(`Unknown track: ${trackId}`);
+  }
+  await ref.set({ isrc: normalizeISRC(isrc) }, { merge: true });
+  const updated = await ref.get();
+  return updated.data() as Track;
 }
 
 export async function listTracksByRelease(releaseId: string, store?: Firestore): Promise<Track[]> {
@@ -111,6 +215,40 @@ export async function getTrackMaster(
 ): Promise<TrackMaster | null> {
   const snap = await db(store).collection(TRACK_MASTERS).doc(trackId).get();
   return snap.exists ? (snap.data() as TrackMaster) : null;
+}
+
+// ---------------------------------------------------------------------------
+// Rights — SENSITIVE ownership splits (admin-only `rights/{releaseId}`)
+// ---------------------------------------------------------------------------
+
+/**
+ * Write a release's SENSITIVE ownership splits to the admin-only
+ * `rights/{releaseId}` collection (firestore.rules denies all client access;
+ * the admin SDK bypasses rules). Splits are validated first (a non-empty set
+ * must sum to 100); invalid splits throw and nothing is persisted. NEVER write
+ * splits into the world-readable release doc.
+ */
+export async function setRights(
+  releaseId: string,
+  splits: Split[],
+  store?: Firestore,
+): Promise<RightsRecord> {
+  const { splits: validated } = validateSplits(splits);
+  const record: RightsRecord = { releaseId, ownershipSplits: validated };
+  await db(store)
+    .collection(RIGHTS)
+    .doc(releaseId)
+    .set({ releaseId, ownershipSplits: validated.map((s) => ({ ...s })) });
+  return record;
+}
+
+/** Read a release's ownership splits (admin SDK). Returns null if unset. */
+export async function getRights(
+  releaseId: string,
+  store?: Firestore,
+): Promise<RightsRecord | null> {
+  const snap = await db(store).collection(RIGHTS).doc(releaseId).get();
+  return snap.exists ? (snap.data() as RightsRecord) : null;
 }
 
 // ---------------------------------------------------------------------------

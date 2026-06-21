@@ -26,8 +26,11 @@ import {
   createProduct,
   createRelease,
   listOrders,
+  setReleaseIdentifiers,
+  setRights,
+  setTrackISRC,
 } from "../label/store";
-import type { Artist, Order, Product, Release } from "../label";
+import type { Artist, Credit, Order, Product, Release, RightsRecord, Track } from "../label";
 import { buildLabelAgent } from "../agent/leadAgent";
 import { createChatModel } from "../../harness/models";
 import type { ChatModelLike } from "../../harness/runtime";
@@ -103,6 +106,28 @@ const productSchema = z.object({
   polarPriceId: z.string().optional(),
 });
 
+const creditSchema = z.object({
+  role: z.string().min(1),
+  name: z.string().min(1),
+});
+
+const setIdentifiersSchema = z
+  .object({
+    releaseId: z.string().min(1),
+    upc: z.string().min(1).optional(),
+    credits: z.array(creditSchema).optional(),
+    trackIsrcs: z.array(z.object({ trackId: z.string().min(1), isrc: z.string().min(1) })).optional(),
+  })
+  .refine(
+    (v) => v.upc !== undefined || v.credits !== undefined || (v.trackIsrcs?.length ?? 0) > 0,
+    { message: "Provide at least one of upc, credits, or trackIsrcs." },
+  );
+
+const setOwnershipSplitsSchema = z.object({
+  releaseId: z.string().min(1),
+  splits: z.array(z.object({ payee: z.string().min(1), percent: z.number() })),
+});
+
 const runAgentSchema = z.object({
   prompt: z.string().min(1),
 });
@@ -168,6 +193,75 @@ export async function handleListOrders(req: AdminRequest<unknown>): Promise<Orde
   return listOrders();
 }
 
+/** Result of `adminSetIdentifiers`: the updated release + any updated tracks. */
+export interface SetIdentifiersResult {
+  release: Release;
+  tracks: Track[];
+}
+
+/**
+ * Set the PUBLIC identifiers on a release: UPC/EAN, credits, and per-track
+ * ISRCs. The store validates every identifier (bad UPC check digit / bad ISRC
+ * format throws), so invalid input is rejected before persisting.
+ */
+export async function handleSetIdentifiers(
+  req: AdminRequest<unknown>,
+): Promise<SetIdentifiersResult> {
+  assertAdmin(req.auth);
+  const input = parse(setIdentifiersSchema, req.data);
+  const credits: Credit[] | undefined = input.credits?.map((c) => ({
+    role: c.role,
+    name: c.name,
+  }));
+  try {
+    const release = await setReleaseIdentifiers(input.releaseId, {
+      upc: input.upc,
+      credits,
+    });
+    const tracks: Track[] = [];
+    for (const { trackId, isrc } of input.trackIsrcs ?? []) {
+      tracks.push(await setTrackISRC(trackId, isrc));
+    }
+    return { release, tracks };
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/**
+ * Re-wrap a store validation `Error` (bad identifier / bad splits) as an
+ * `invalid-argument` HttpsError so callers get a clean client error. Anything
+ * already an HttpsError is rethrown unchanged.
+ */
+function asInvalidArgument(e: unknown): unknown {
+  if (e instanceof HttpsError) {
+    return e;
+  }
+  const message = e instanceof Error ? e.message : "Invalid input.";
+  return new HttpsError("invalid-argument", message);
+}
+
+/**
+ * Set the SENSITIVE ownership splits for a release. Writes ONLY to the
+ * admin-only `rights` collection (never the public release doc). The store
+ * validates the splits (a non-empty set must sum to 100), so invalid splits
+ * are rejected before persisting.
+ */
+export async function handleSetOwnershipSplits(
+  req: AdminRequest<unknown>,
+): Promise<RightsRecord> {
+  assertAdmin(req.auth);
+  const input = parse(setOwnershipSplitsSchema, req.data);
+  try {
+    return await setRights(
+      input.releaseId,
+      input.splits.map((s) => ({ payee: s.payee, percent: s.percent })),
+    );
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
 /** A transcript line surfaced in the agent console. */
 export interface TranscriptEntry {
   role: "system" | "human" | "ai" | "tool";
@@ -226,6 +320,12 @@ export const adminCreateArtist = onCall((request) => handleCreateArtist(toAdminR
 export const adminCreateRelease = onCall((request) => handleCreateRelease(toAdminRequest(request)));
 export const adminCreateProduct = onCall((request) => handleCreateProduct(toAdminRequest(request)));
 export const adminListOrders = onCall((request) => handleListOrders(toAdminRequest(request)));
+export const adminSetIdentifiers = onCall((request) =>
+  handleSetIdentifiers(toAdminRequest(request)),
+);
+export const adminSetOwnershipSplits = onCall((request) =>
+  handleSetOwnershipSplits(toAdminRequest(request)),
+);
 // `runAgent` invokes the Claude-backed model factory, which reads
 // ANTHROPIC_API_KEY from the environment — bind it so the secret is present at
 // runtime (Functions v2 does not auto-inject Secret Manager values).

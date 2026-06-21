@@ -15,9 +15,12 @@ import {
   createRelease,
   createTrack,
   listOrders,
+  setReleaseIdentifiers,
+  setRights,
+  setTrackISRC,
   setTrackMaster,
 } from "./store";
-import type { Artist, Product, Release, Track } from "./index";
+import type { Artist, Credit, Product, Release, Split, Track } from "./index";
 
 const releaseTypeSchema = z.enum(["album", "ep", "single"]);
 const productTypeSchema = z.enum(["music_download", "merch"]);
@@ -65,6 +68,51 @@ const createProductSchema = z.object({
   releaseId: z.string().optional().describe("id of the release this product unlocks (optional)"),
   polarProductId: z.string().optional().describe("Polar product id once created (optional)"),
   polarPriceId: z.string().optional().describe("Polar price id once created (optional)"),
+});
+
+const creditSchema = z.object({
+  role: z.string().describe("credit role, e.g. 'Producer', 'Mixing Engineer'"),
+  name: z.string().describe("credited name"),
+});
+
+const setReleaseIdentifiersSchema = z.object({
+  releaseId: z.string().describe("id of the release to update"),
+  upc: z
+    .string()
+    .optional()
+    .describe(
+      "release barcode: 12-digit UPC-A or 13-digit EAN/GTIN-13 with a valid " +
+        "check digit (hyphens/spaces allowed). PUBLIC — appears on the release page.",
+    ),
+  credits: z
+    .array(creditSchema)
+    .optional()
+    .describe("production credits (PUBLIC — appear on the release page)"),
+});
+
+const setTrackIsrcSchema = z.object({
+  trackId: z.string().describe("id of the track to update"),
+  isrc: z
+    .string()
+    .describe(
+      "ISRC recording identifier in CC-XXX-YY-NNNNN form (hyphens optional). " +
+        "PUBLIC — appears on the track/release page.",
+    ),
+});
+
+const splitSchema = z.object({
+  payee: z.string().describe("payee name / id receiving this ownership share"),
+  percent: z.number().describe("ownership percentage; 0 < percent <= 100"),
+});
+
+const setOwnershipSplitsSchema = z.object({
+  releaseId: z.string().describe("id of the release these splits belong to"),
+  splits: z
+    .array(splitSchema)
+    .describe(
+      "ownership splits; a non-empty set must sum to 100. SENSITIVE — written " +
+        "ONLY to the admin-only rights collection, never to the public release doc.",
+    ),
 });
 
 const listOrdersSchema = z.object({});
@@ -151,6 +199,47 @@ export const createProductTool = new DynamicStructuredTool({
   },
 });
 
+export const setReleaseIdentifiersTool = new DynamicStructuredTool({
+  name: "set_release_identifiers",
+  description:
+    "Set a release's PUBLIC identifiers: UPC/EAN barcode and production " +
+    "credits. Rejects an invalid barcode check digit.",
+  schema: setReleaseIdentifiersSchema,
+  func: async (input: z.infer<typeof setReleaseIdentifiersSchema>): Promise<string> => {
+    const credits: Credit[] | undefined = input.credits?.map((c) => ({
+      role: c.role,
+      name: c.name,
+    }));
+    await setReleaseIdentifiers(input.releaseId, { upc: input.upc, credits });
+    return `Set identifiers on release ${input.releaseId}.`;
+  },
+});
+
+export const setTrackIsrcTool = new DynamicStructuredTool({
+  name: "set_track_isrc",
+  description:
+    "Set a track's PUBLIC ISRC recording identifier. Rejects an invalid ISRC format.",
+  schema: setTrackIsrcSchema,
+  func: async (input: z.infer<typeof setTrackIsrcSchema>): Promise<string> => {
+    const track = await setTrackISRC(input.trackId, input.isrc);
+    return `Set ISRC ${track.isrc} on track ${input.trackId}.`;
+  },
+});
+
+export const setOwnershipSplitsTool = new DynamicStructuredTool({
+  name: "set_ownership_splits",
+  description:
+    "Set a release's SENSITIVE ownership splits. A non-empty set must sum to " +
+    "100. Written ONLY to the admin-only rights collection (never the public " +
+    "release doc). Rejects splits that do not sum to 100 or carry bad percentages.",
+  schema: setOwnershipSplitsSchema,
+  func: async (input: z.infer<typeof setOwnershipSplitsSchema>): Promise<string> => {
+    const splits: Split[] = input.splits.map((s) => ({ payee: s.payee, percent: s.percent }));
+    await setRights(input.releaseId, splits);
+    return `Set ${splits.length} ownership split(s) for release ${input.releaseId}.`;
+  },
+});
+
 export const listOrdersTool = new DynamicStructuredTool({
   name: "list_orders",
   description: "List all mirrored Polar orders as JSON.",
@@ -168,6 +257,9 @@ export function getLabelTools(): StructuredToolInterface[] {
     createReleaseTool,
     createTrackTool,
     createProductTool,
+    setReleaseIdentifiersTool,
+    setTrackIsrcTool,
+    setOwnershipSplitsTool,
     listOrdersTool,
   ];
 }

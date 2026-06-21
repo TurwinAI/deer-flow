@@ -17,11 +17,15 @@ import {
   createTrackTool,
   getLabelTools,
   listOrdersTool,
+  setOwnershipSplitsTool,
+  setReleaseIdentifiersTool,
+  setTrackIsrcTool,
 } from "../app/label/tools";
 import {
   getArtist,
   getProduct,
   getRelease,
+  getRights,
   getTrackMaster,
   listArtists,
   listOrders,
@@ -48,16 +52,33 @@ describe.skipIf(RUN)("label catalog (emulator)", () => {
 
   afterEach(async () => {
     const db = getDb();
-    for (const coll of ["artists", "releases", "tracks", "track_masters", "products", "orders"]) {
+    for (const coll of [
+      "artists",
+      "releases",
+      "tracks",
+      "track_masters",
+      "products",
+      "orders",
+      "rights",
+    ]) {
       const snap = await db.collection(coll).get();
       await Promise.all(snap.docs.map((d) => d.ref.delete()));
     }
   });
 
-  it("getLabelTools exposes the five catalog tools", () => {
+  it("getLabelTools exposes the catalog + metadata/rights tools", () => {
     const names = getLabelTools().map((t) => t.name).sort();
     expect(names).toEqual(
-      ["create_artist", "create_product", "create_release", "create_track", "list_orders"].sort(),
+      [
+        "create_artist",
+        "create_product",
+        "create_release",
+        "create_track",
+        "list_orders",
+        "set_ownership_splits",
+        "set_release_identifiers",
+        "set_track_isrc",
+      ].sort(),
     );
   });
 
@@ -152,6 +173,104 @@ describe.skipIf(RUN)("label catalog (emulator)", () => {
     expect(await listOrders()).toHaveLength(1);
   });
 
+  it("set_track_isrc tool writes a valid ISRC onto the public track doc", async () => {
+    await createTrackTool.invoke({
+      id: "idtrack",
+      releaseId: "tool-release",
+      title: "Identified Track",
+      durationSec: 180,
+      previewClipPath: "previews/tool/idtrack.mp3",
+      masterPath: "masters/tool/idtrack.wav",
+    });
+    await setTrackIsrcTool.invoke({ trackId: "idtrack", isrc: "US-RC1-76-07839" });
+    const tracks = await listTracksByRelease("tool-release");
+    const track = tracks.find((t) => t.id === "idtrack");
+    // Stored normalized (hyphens stripped, uppercase) on the PUBLIC track doc.
+    expect(track?.isrc).toBe("USRC17607839");
+  });
+
+  it("set_track_isrc tool REJECTS an invalid ISRC", async () => {
+    await createTrackTool.invoke({
+      id: "badtrack",
+      releaseId: "tool-release",
+      title: "Bad Track",
+      durationSec: 180,
+      previewClipPath: "previews/tool/badtrack.mp3",
+      masterPath: "masters/tool/badtrack.wav",
+    });
+    await expect(
+      setTrackIsrcTool.invoke({ trackId: "badtrack", isrc: "NOT-AN-ISRC" }),
+    ).rejects.toThrow(/invalid isrc/i);
+  });
+
+  it("set_release_identifiers tool writes UPC + credits onto the public release doc", async () => {
+    await createReleaseTool.invoke({
+      id: "idrelease",
+      artistId: "tool-artist",
+      title: "Identified EP",
+      catalogNumber: "PRM-777",
+      type: "ep",
+      releaseDate: "2026-09-01",
+    });
+    await setReleaseIdentifiersTool.invoke({
+      releaseId: "idrelease",
+      upc: "0-36000-29145-2",
+      credits: [{ role: "Producer", name: "PlayReggaeMusic.ai" }],
+    });
+    const release = await getRelease("idrelease");
+    expect(release?.upc).toBe("036000291452"); // normalized
+    expect(release?.credits).toEqual([{ role: "Producer", name: "PlayReggaeMusic.ai" }]);
+  });
+
+  it("set_release_identifiers tool REJECTS a UPC with a bad check digit", async () => {
+    await createReleaseTool.invoke({
+      id: "badrelease",
+      artistId: "tool-artist",
+      title: "Bad EP",
+      catalogNumber: "PRM-778",
+      type: "ep",
+      releaseDate: "2026-09-01",
+    });
+    await expect(
+      setReleaseIdentifiersTool.invoke({ releaseId: "badrelease", upc: "036000291453" }),
+    ).rejects.toThrow(/invalid upc/i);
+  });
+
+  it("set_ownership_splits tool writes SENSITIVE splits to the admin-only rights collection", async () => {
+    await setOwnershipSplitsTool.invoke({
+      releaseId: "rel-splits",
+      splits: [
+        { payee: "Label", percent: 60 },
+        { payee: "Artist", percent: 40 },
+      ],
+    });
+    // Splits live in `rights`, NOT on any public doc.
+    const rights = await getRights("rel-splits");
+    expect(rights?.ownershipSplits).toEqual([
+      { payee: "Label", percent: 60 },
+      { payee: "Artist", percent: 40 },
+    ]);
+    // The public release doc (if any) never carries ownershipSplits.
+    const release = await getRelease("rel-splits");
+    expect(release).toBeUndefined();
+    const db = getDb();
+    const rightsSnap = await db.collection("rights").doc("rel-splits").get();
+    expect(rightsSnap.data()).not.toHaveProperty("payee");
+  });
+
+  it("set_ownership_splits tool REJECTS splits that do not sum to 100", async () => {
+    await expect(
+      setOwnershipSplitsTool.invoke({
+        releaseId: "rel-bad-splits",
+        splits: [
+          { payee: "Label", percent: 60 },
+          { payee: "Artist", percent: 30 },
+        ],
+      }),
+    ).rejects.toThrow(/sum to 100/i);
+    expect(await getRights("rel-bad-splits")).toBeNull();
+  });
+
   it("seedRootsUntold creates the expected catalog and is idempotent", async () => {
     const first = await seedRootsUntold();
     expect(first.artist.id).toBe(ROOTS_UNTOLD_ARTIST_ID);
@@ -166,6 +285,21 @@ describe.skipIf(RUN)("label catalog (emulator)", () => {
     const seededTracks = await listTracksByRelease(FOUNDATION_RELEASE_ID);
     expect(seededTracks).toHaveLength(3);
     expect((await getProduct(FOUNDATION_PRODUCT_ID))?.type).toBe("music_download");
+
+    // Seed carries valid PUBLIC identifiers: a valid release UPC + credits...
+    const seededRelease = await getRelease(FOUNDATION_RELEASE_ID);
+    expect(seededRelease?.upc).toBe("196633982100");
+    expect(seededRelease?.credits?.length).toBeGreaterThan(0);
+    // ...and a valid ISRC on every track.
+    for (const track of seededTracks) {
+      expect(track.isrc).toMatch(/^[A-Z]{2}[A-Z0-9]{3}[0-9]{7}$/);
+    }
+
+    // SENSITIVE ownership splits live in the admin-only rights collection and
+    // sum to 100; the PUBLIC release doc NEVER carries ownershipSplits.
+    const rights = await getRights(FOUNDATION_RELEASE_ID);
+    expect(rights?.ownershipSplits.reduce((s, x) => s + x.percent, 0)).toBe(100);
+    expect(seededRelease).not.toHaveProperty("ownershipSplits");
 
     // Public track docs must NOT leak the private master path...
     for (const track of seededTracks) {

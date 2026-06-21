@@ -19,6 +19,12 @@ export interface Artist {
   links: { spotify?: string; appleMusic?: string; youtube?: string; instagram?: string };
 }
 
+/** A production credit, e.g. `{ role: "Producer", name: "Roots Untold" }`. */
+export interface Credit {
+  role: string;
+  name: string;
+}
+
 export interface Release {
   id: string;
   artistId: string;
@@ -27,6 +33,13 @@ export interface Release {
   type: ReleaseType;
   releaseDate: string;
   aiGenerated: true;
+  /**
+   * PUBLIC release barcode — UPC-A (12 digits) or EAN/GTIN-13 (13 digits) with
+   * a valid check digit. Appears on the public release page; safe to expose.
+   */
+  upc?: string;
+  /** PUBLIC production credits — appear on the release page; safe to expose. */
+  credits?: Credit[];
 }
 
 /**
@@ -42,6 +55,11 @@ export interface Track {
   title: string;
   durationSec: number;
   previewClipPath: string;
+  /**
+   * PUBLIC recording identifier — ISRC (ISO 3901, `CC-XXX-YY-NNNNN`). Appears
+   * on the public track/release page; safe to expose. Stored normalized.
+   */
+  isrc?: string;
 }
 
 /**
@@ -53,6 +71,25 @@ export interface Track {
 export interface TrackMaster {
   trackId: string;
   masterPath: string;
+}
+
+/** A single ownership share, e.g. `{ payee: "Roots Untold", percent: 50 }`. */
+export interface Split {
+  payee: string;
+  percent: number;
+}
+
+/**
+ * SENSITIVE ownership splits for a release. Ownership/royalty splits are
+ * commercially sensitive and must NEVER appear in the world-readable release
+ * doc. They live in the admin-only `rights/{releaseId}` collection
+ * (firestore.rules denies all client access; the admin SDK bypasses rules),
+ * exactly like `track_masters` keeps private master paths out of public reach.
+ * A non-empty `ownershipSplits` must sum to 100 (see `validateSplits`).
+ */
+export interface RightsRecord {
+  releaseId: string;
+  ownershipSplits: Split[];
 }
 
 /**
@@ -86,6 +123,7 @@ export interface Order {
   createdAt: string;
 }
 
+export * from "./identifiers";
 export * from "./store";
 export * from "./tools";
 export * from "./seed";
