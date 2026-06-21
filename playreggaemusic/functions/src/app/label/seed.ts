@@ -19,6 +19,7 @@ import {
   setTrackMaster,
 } from "./store";
 import { contentSha256 } from "./assets";
+import { activateAgreement, registerAgreement, type ArtistAgreement } from "../legal/contracts";
 import type { Artist, Product, ProvenanceRecord, Release, RightsRecord, Split, Track } from "./index";
 
 export const ROOTS_UNTOLD_ARTIST_ID = "roots-untold";
@@ -141,6 +142,12 @@ const PRODUCT: Product = {
   releaseId: FOUNDATION_RELEASE_ID,
 };
 
+/**
+ * Fixed signed-at timestamp for the seeded artist agreement so the seed stays
+ * idempotent (a wall-clock value would change the doc on every run).
+ */
+const SEED_AGREEMENT_SIGNED_AT = "2026-06-01T00:00:00.000Z";
+
 export interface SeedResult {
   artist: Artist;
   release: Release;
@@ -148,6 +155,8 @@ export interface SeedResult {
   product: Product;
   rights: RightsRecord;
   provenance: ProvenanceRecord[];
+  /** The ACTIVE artist agreement (with AI-generation consent) for compliance. */
+  agreement: ArtistAgreement;
 }
 
 /**
@@ -178,5 +187,31 @@ export async function seedRootsUntold(store?: Firestore): Promise<SeedResult> {
   await createProduct(PRODUCT, store);
   // SENSITIVE ownership splits -> admin-only rights collection (never public).
   const rights = await setRights(FOUNDATION_RELEASE_ID, OWNERSHIP_SPLITS, store);
-  return { artist: ARTIST, release: RELEASE, tracks, product: PRODUCT, rights, provenance };
+  // ACTIVE artist agreement with AI-generation consent — required by the P2B09
+  // compliance gate so the seeded release stays distributable. Structured record
+  // only; the binding wording is owner-supplied before go-live.
+  await registerAgreement(
+    {
+      artistId: ROOTS_UNTOLD_ARTIST_ID,
+      termMonths: 24,
+      royaltyRatePct: 30,
+      ownershipNote:
+        "Masters owned by PlayReggaeMusic.ai; artist retains the share recorded in " +
+        "the release ownership splits. (Structured note — owner-supplied binding " +
+        "terms govern.)",
+      aiGenerationConsent: true,
+      signedAt: SEED_AGREEMENT_SIGNED_AT,
+    },
+    store,
+  );
+  const agreement = await activateAgreement(ROOTS_UNTOLD_ARTIST_ID, store);
+  return {
+    artist: ARTIST,
+    release: RELEASE,
+    tracks,
+    product: PRODUCT,
+    rights,
+    provenance,
+    agreement,
+  };
 }

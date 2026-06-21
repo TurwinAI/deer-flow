@@ -25,6 +25,7 @@ import {
   createArtist,
   createProduct,
   createRelease,
+  getRelease,
   listOrders,
   setProvenance,
   setReleaseIdentifiers,
@@ -51,11 +52,84 @@ import type {
   Track,
 } from "../label";
 import { deliverRelease, scheduleRelease } from "../distribution/release";
-import type { DistributionRecord } from "../distribution/store";
+import { listDistributionRecords, type DistributionRecord } from "../distribution/store";
 import { DdexDistributorClient, type DistributorClient } from "../distribution/client";
+import {
+  PolarRevenueSource,
+  FakeDistributorRevenueSource,
+  FakePRORevenueSource,
+  ingestRevenue,
+  type RevenueIngestResult,
+  type ProductReleaseMap,
+  type RevenueEvent,
+  type RevenueSource,
+} from "../finance/revenue";
+import { generateStatement, listStatements, type RoyaltyStatement } from "../finance/statements";
+import { proposePayout, type Payout } from "../finance/payout";
+import {
+  registerWork,
+  setWriterSplits,
+  type Work,
+  type WorkSplits,
+} from "../publishing/works";
+import {
+  registerProAffiliation,
+  RealProRegistrar,
+  type Pro,
+  type ProAffiliation,
+  type ProRegistrar,
+  type ProRegistrationConfirmation,
+} from "../publishing/pro";
+import {
+  addToSyncCatalog,
+  clearSyncLicense,
+  issueSyncLicense,
+  requestSyncLicense,
+  type SyncCatalogEntry,
+  type SyncLicense,
+} from "../publishing/sync";
+import {
+  planAndSaveCampaign,
+  listCampaigns,
+  recordMarketingEvent,
+  type Campaign,
+} from "../marketing/campaign";
+import { scheduleCampaign, type ScheduleCampaignResult } from "../marketing/scheduling";
+import {
+  RealSocialChannel,
+  RealEmailChannel,
+  RealAdChannel,
+  type SocialChannel,
+  type EmailChannel,
+  type AdChannel,
+  type SocialPostResult,
+  type EmailBlastResult,
+  type AdSpendResult,
+} from "../marketing/channels";
+import {
+  PolarSalesSource,
+  FakeDSPStatsSource,
+  ingestAnalytics,
+  type AnalyticsIngestResult,
+  type AnalyticsSource,
+  type DspStatFixture,
+} from "../analytics/ingest";
+import { generateInsightReport, type InsightReport } from "../analytics/insights";
+import { recommendNextActions, listRecommendations, type AnrRecommendation } from "../analytics/anr";
+import { registerAgreement, activateAgreement, type ArtistAgreement } from "../legal/contracts";
+import { setLicenseTerms, type LicenseTerms } from "../legal/license";
+import { checkReleaseCompliance, type ComplianceResult } from "../legal/compliance";
+import { FakeScheduler, type Scheduler } from "../../harness/orchestration";
 import { buildLabelAgent } from "../agent/leadAgent";
 import { createChatModel } from "../../harness/models";
 import type { ChatModelLike } from "../../harness/runtime";
+import {
+  approve,
+  listPendingApprovals,
+  listAuditEntries,
+  type ApprovalRecord,
+  type AuditEntry,
+} from "../../harness/orchestration";
 
 /**
  * The minimal auth shape the guard needs. `CallableRequest.auth` is optional
@@ -183,6 +257,192 @@ const deliverReleaseApiSchema = z.object({
 
 const runAgentSchema = z.object({
   prompt: z.string().min(1),
+});
+
+const approveSchema = z.object({
+  approvalId: z.string().min(1),
+});
+
+const listAuditSchema = z.object({
+  threadId: z.string().min(1),
+});
+
+// Finance (P2B05, F7) schemas.
+const revenueEventInputSchema = z.object({
+  id: z.string().min(1),
+  releaseId: z.string().min(1).optional(),
+  trackId: z.string().min(1).optional(),
+  grossCents: z.number().int(),
+  currency: z.string().min(1),
+  occurredAt: z.string().min(1),
+});
+
+const ingestRevenueSchema = z.object({
+  period: z.string().min(1),
+  /** Optional product→release map so D2C order revenue is attributed. */
+  productReleaseMap: z.record(z.string(), z.string()).optional(),
+  /** Optional deterministic distributor (DSP) income fixtures. */
+  distributorEvents: z.array(revenueEventInputSchema).optional(),
+  /** Optional deterministic PRO (publishing) income fixtures. */
+  proEvents: z.array(revenueEventInputSchema).optional(),
+});
+
+const generateStatementApiSchema = z.object({
+  artistId: z.string().min(1),
+  period: z.string().min(1),
+  deductionsCents: z.number().int().nonnegative().optional(),
+  payeeName: z.string().min(1).optional(),
+});
+
+const listStatementsSchema = z.object({
+  artistId: z.string().min(1).optional(),
+});
+
+const proposePayoutApiSchema = z.object({
+  artistId: z.string().min(1),
+  statementId: z.string().min(1),
+  currency: z.string().min(1).optional(),
+});
+
+// Publishing & sync (P2B06, F8/F9) schemas.
+const registerWorkApiSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  iswc: z.string().min(1).optional(),
+  linkedIsrcs: z.array(z.string().min(1)).default([]),
+});
+
+const setWriterSplitsApiSchema = z.object({
+  workId: z.string().min(1),
+  splits: z.array(z.object({ payee: z.string().min(1), percent: z.number() })),
+});
+
+const registerProAffiliationApiSchema = z.object({
+  writerId: z.string().min(1),
+  pro: z.enum(["ASCAP", "BMI", "SESAC", "MLC"]),
+  ipi: z.string().min(1).optional(),
+  memberId: z.string().min(1).optional(),
+});
+
+const addToSyncCatalogApiSchema = z.object({
+  recordingId: z.string().min(1),
+  workId: z.string().min(1),
+  title: z.string().min(1),
+  available: z.boolean().optional(),
+});
+
+const requestSyncLicenseApiSchema = z.object({
+  id: z.string().min(1),
+  recordingId: z.string().min(1),
+  workId: z.string().min(1),
+  licensee: z.string().min(1),
+  mediaType: z.string().min(1),
+  territory: z.string().min(1),
+  termMonths: z.number().int().positive(),
+  feeCents: z.number().int().nonnegative(),
+});
+
+const clearSyncLicenseApiSchema = z.object({
+  licenseId: z.string().min(1),
+});
+
+const issueSyncLicenseApiSchema = z.object({
+  licenseId: z.string().min(1),
+  // The admin explicitly approving this CONSEQUENTIAL, binding action. Required true.
+  approved: z.literal(true),
+});
+
+// Marketing & promotion (P2B07, F5) schemas.
+const planCampaignApiSchema = z.object({
+  releaseId: z.string().min(1),
+  budgetCents: z.number().int().nonnegative().optional(),
+  campaignId: z.string().min(1).optional(),
+});
+
+const scheduleCampaignApiSchema = z.object({
+  campaignId: z.string().min(1),
+  baseTime: z.string().min(1),
+  cadenceDays: z.number().int().positive().optional(),
+});
+
+const publishSocialPostApiSchema = z.object({
+  platform: z.string().min(1),
+  message: z.string().min(1),
+  assetPath: z.string().min(1).optional(),
+  // The admin explicitly approving this CONSEQUENTIAL public broadcast. Required true.
+  approved: z.literal(true),
+});
+
+const sendEmailBlastApiSchema = z.object({
+  segment: z.string().min(1),
+  subject: z.string().min(1),
+  body: z.string().min(1),
+  // The admin explicitly approving this CONSEQUENTIAL outward send. Required true.
+  approved: z.literal(true),
+});
+
+const marketingSpendApiSchema = z.object({
+  platform: z.string().min(1),
+  budgetCents: z.number().int().positive(),
+  currency: z.string().min(1),
+  objective: z.string().min(1),
+  // The admin explicitly approving this CONSEQUENTIAL spend. Required true.
+  approved: z.literal(true),
+});
+
+// Analytics & A&R (P2B08, F11 + F1) schemas. All NON-consequential
+// (read/propose only). Ingestion always pulls the local Polar `orders` mirror;
+// optional deterministic DSP-stats fixtures may be supplied. No live analytics.
+const dspStatFixtureSchema = z.object({
+  id: z.string().min(1),
+  releaseId: z.string().min(1).optional(),
+  trackId: z.string().min(1).optional(),
+  streams: z.number().int().nonnegative().optional(),
+  listeners: z.number().int().nonnegative().optional(),
+  saves: z.number().int().nonnegative().optional(),
+  occurredAt: z.string().min(1),
+});
+
+const ingestAnalyticsApiSchema = z.object({
+  period: z.string().min(1),
+  /** Optional product→release map so D2C sales metrics are attributed. */
+  productReleaseMap: z.record(z.string(), z.string()).optional(),
+  /** Optional deterministic DSP-stats fixtures (streams/listeners/saves). */
+  dspStats: z.array(dspStatFixtureSchema).optional(),
+});
+
+const generateInsightsApiSchema = z.object({
+  period: z.string().min(1),
+  priorPeriod: z.string().min(1).optional(),
+});
+
+const recommendNextActionsApiSchema = z.object({
+  period: z.string().min(1),
+  priorPeriod: z.string().min(1).optional(),
+});
+
+// Legal/Contracts/Compliance (P2B09, F10) schemas. All NON-consequential
+// (record contracts/terms or run a read-only check).
+const registerAgreementApiSchema = z.object({
+  artistId: z.string().min(1),
+  termMonths: z.number().int().positive(),
+  royaltyRatePct: z.number().min(0).max(100),
+  ownershipNote: z.string().min(1),
+  aiGenerationConsent: z.boolean().optional(),
+  signedAt: z.string().min(1).optional(),
+});
+
+const activateAgreementApiSchema = z.object({
+  artistId: z.string().min(1),
+});
+
+const setLicenseTermsApiSchema = z.object({
+  kind: z.string().min(1),
+  bodyText: z.string().min(1),
+});
+
+const checkComplianceApiSchema = z.object({
+  releaseId: z.string().min(1),
 });
 
 function parse<T>(schema: z.ZodType<T>, data: unknown): T {
@@ -454,6 +714,29 @@ export async function handleDeliverRelease(
   }
 }
 
+/** A distribution-status row for the admin view: the record + its release title. */
+export interface DistributionStatusRow extends DistributionRecord {
+  /** The release's display title (joined from the catalog), if known. */
+  title: string;
+}
+
+/**
+ * List all release distribution records, joined with each release's title, for
+ * the admin distribution-status view (read-only). Admin-guarded.
+ */
+export async function handleListDistributions(
+  req: AdminRequest<unknown>,
+): Promise<DistributionStatusRow[]> {
+  assertAdmin(req.auth);
+  const records = await listDistributionRecords();
+  const rows: DistributionStatusRow[] = [];
+  for (const record of records) {
+    const release = await getRelease(record.releaseId);
+    rows.push({ ...record, title: release?.title ?? record.releaseId });
+  }
+  return rows;
+}
+
 /** A transcript line surfaced in the agent console. */
 export interface TranscriptEntry {
   role: "system" | "human" | "ai" | "tool";
@@ -498,6 +781,500 @@ function roleOf(message: BaseMessage): TranscriptEntry["role"] {
 }
 
 // ---------------------------------------------------------------------------
+// Autonomy orchestration (P2B04, F12) — admin-guarded approval + audit review.
+// These drive the human-in-the-loop side of the ApprovalGate: an admin lists
+// what the agent blocked pending approval, approves a specific request (which
+// lets the SAME consequential call execute on the next run), and reviews the
+// full per-thread audit trail. The orchestration stores default to Firestore
+// (admin SDK); the handlers are auth-guarded + runtime-agnostic for unit tests.
+// ---------------------------------------------------------------------------
+
+/** List all consequential calls the agent has BLOCKED pending human approval. */
+export async function handleListPendingApprovals(
+  req: AdminRequest<unknown>,
+): Promise<ApprovalRecord[]> {
+  assertAdmin(req.auth);
+  return listPendingApprovals();
+}
+
+/**
+ * Approve one pending consequential call (the human-in-the-loop decision). After
+ * approval, the SAME (tool, args) call executes the next time the agent issues
+ * it. Unknown-approval errors surface as `invalid-argument`.
+ */
+export async function handleApprove(
+  req: AdminRequest<unknown>,
+): Promise<ApprovalRecord> {
+  assertAdmin(req.auth);
+  const input = parse(approveSchema, req.data);
+  try {
+    return await approve(input.approvalId);
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/** Read a thread's full agent audit trail (every tool call, in order). */
+export async function handleListAudit(
+  req: AdminRequest<unknown>,
+): Promise<AuditEntry[]> {
+  assertAdmin(req.auth);
+  const input = parse(listAuditSchema, req.data);
+  return listAuditEntries(input.threadId);
+}
+
+// ---------------------------------------------------------------------------
+// Royalties & finance (P2B05, F7) — admin-guarded ingestion, statements, and
+// payout PROPOSALS. Revenue ingestion reads the local Polar `orders` mirror
+// (no network) and, when supplied, deterministic distributor/PRO fixtures. The
+// REAL distributor/PRO revenue sources are operator-side and are NEVER wired in
+// here. proposePayout writes a "proposed" record only — there is NO live payout.
+// ---------------------------------------------------------------------------
+
+/**
+ * Ingest revenue for a period into the admin-only `revenue_events` store. Always
+ * pulls the local Polar `orders` mirror; optionally also ingests deterministic
+ * distributor/PRO fixtures supplied by the caller. No live revenue API is ever
+ * reached.
+ */
+export async function handleIngestRevenue(req: AdminRequest<unknown>): Promise<RevenueIngestResult> {
+  assertAdmin(req.auth);
+  const input = parse(ingestRevenueSchema, req.data);
+  const map: ProductReleaseMap = input.productReleaseMap ?? {};
+  const sources: RevenueSource[] = [new PolarRevenueSource(map)];
+  if (input.distributorEvents && input.distributorEvents.length > 0) {
+    sources.push(new FakeDistributorRevenueSource(input.distributorEvents as Omit<RevenueEvent, "source">[]));
+  }
+  if (input.proEvents && input.proEvents.length > 0) {
+    sources.push(new FakePRORevenueSource(input.proEvents as Omit<RevenueEvent, "source">[]));
+  }
+  return ingestRevenue(sources, input.period);
+}
+
+/** Generate + store a per-artist royalty statement (totals reconcile). */
+export async function handleGenerateStatement(
+  req: AdminRequest<unknown>,
+): Promise<RoyaltyStatement> {
+  assertAdmin(req.auth);
+  const input = parse(generateStatementApiSchema, req.data);
+  try {
+    return await generateStatement(input.artistId, input.period, {
+      deductionsCents: input.deductionsCents,
+      payeeName: input.payeeName,
+    });
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/** List stored royalty statements, optionally filtered to one artist. */
+export async function handleListStatements(
+  req: AdminRequest<unknown>,
+): Promise<RoyaltyStatement[]> {
+  assertAdmin(req.auth);
+  const input = parse(listStatementsSchema, req.data);
+  return listStatements(input.artistId);
+}
+
+/**
+ * Propose a payout for an artist's statement (status "proposed", amount =
+ * statement net). Does NOT pay — executing a payout is consequential and gated
+ * by the ApprovalGate's `initiate_payout`. Unknown-statement errors surface as
+ * `invalid-argument`.
+ */
+export async function handleProposePayout(req: AdminRequest<unknown>): Promise<Payout> {
+  assertAdmin(req.auth);
+  const input = parse(proposePayoutApiSchema, req.data);
+  try {
+    return await proposePayout(input.artistId, input.statementId, { currency: input.currency });
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Publishing & sync (P2B06, F8/F9) — admin-guarded works registry, writer
+// splits, PRO/MLC affiliation, sync catalog, and the sync-license flow. Writer
+// splits go ONLY to the admin-only work_splits collection (never the public
+// works doc). The PRO registrar is INJECTED; production passes a RealProRegistrar
+// (throws without operator creds), tests pass a FakeProRegistrar — NO live
+// PRO/MLC call in any test. `issueSyncLicense` is CONSEQUENTIAL and is gated on
+// the admin explicitly approving (`approved: true`), mirroring adminDeliverRelease.
+// ---------------------------------------------------------------------------
+
+/** Register a composition (PUBLIC works doc only — never writer splits). */
+export async function handleRegisterWork(req: AdminRequest<unknown>): Promise<Work> {
+  assertAdmin(req.auth);
+  const input = parse(registerWorkApiSchema, req.data);
+  try {
+    return await registerWork({
+      id: input.id,
+      title: input.title,
+      iswc: input.iswc,
+      linkedIsrcs: input.linkedIsrcs ?? [],
+    });
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/** Set a work's SENSITIVE writer splits (admin-only work_splits; must sum 100). */
+export async function handleSetWriterSplits(req: AdminRequest<unknown>): Promise<WorkSplits> {
+  assertAdmin(req.auth);
+  const input = parse(setWriterSplitsApiSchema, req.data);
+  try {
+    return await setWriterSplits(
+      input.workId,
+      input.splits.map((s) => ({ payee: s.payee, percent: s.percent })),
+    );
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/**
+ * Register a writer's PRO/MLC affiliation via the injected registrar, then
+ * persist it to the admin-only pro_affiliations collection. Production passes a
+ * RealProRegistrar (which throws without operator-supplied PRO_API_TOKEN at
+ * handoff); unit tests pass a FakeProRegistrar so NO live call is made.
+ */
+export async function handleRegisterProAffiliation(
+  req: AdminRequest<unknown>,
+  registrar: ProRegistrar = new RealProRegistrar(),
+): Promise<ProRegistrationConfirmation> {
+  assertAdmin(req.auth);
+  const input = parse(registerProAffiliationApiSchema, req.data);
+  const affiliation: ProAffiliation = {
+    writerId: input.writerId,
+    pro: input.pro as Pro,
+    ipi: input.ipi,
+    memberId: input.memberId,
+  };
+  try {
+    return await registerProAffiliation(affiliation, registrar);
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/** Add a recording to the PUBLIC sync catalog (admin-write). */
+export async function handleAddToSyncCatalog(req: AdminRequest<unknown>): Promise<SyncCatalogEntry> {
+  assertAdmin(req.auth);
+  const input = parse(addToSyncCatalogApiSchema, req.data);
+  try {
+    return await addToSyncCatalog({
+      recordingId: input.recordingId,
+      workId: input.workId,
+      title: input.title,
+      available: input.available,
+    });
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/** Record an inbound sync-license REQUEST (status "requested"). */
+export async function handleRequestSyncLicense(req: AdminRequest<unknown>): Promise<SyncLicense> {
+  assertAdmin(req.auth);
+  const input = parse(requestSyncLicenseApiSchema, req.data);
+  try {
+    return await requestSyncLicense({
+      id: input.id,
+      recordingId: input.recordingId,
+      workId: input.workId,
+      licensee: input.licensee,
+      mediaType: input.mediaType,
+      territory: input.territory,
+      termMonths: input.termMonths,
+      feeCents: input.feeCents,
+    });
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/** Clear a requested sync license (verify master + composition). */
+export async function handleClearSyncLicense(req: AdminRequest<unknown>): Promise<SyncLicense> {
+  assertAdmin(req.auth);
+  const input = parse(clearSyncLicenseApiSchema, req.data);
+  try {
+    return await clearSyncLicense(input.licenseId);
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/**
+ * Issue a CLEARED sync license (CONSEQUENTIAL). The admin passing `approved:
+ * true` represents the human-in-the-loop approval; the schema requires it (a
+ * missing/false `approved` is rejected as `invalid-argument` before any issue).
+ * Stamps the placeholder license text + status "issued".
+ */
+export async function handleIssueSyncLicense(req: AdminRequest<unknown>): Promise<SyncLicense> {
+  assertAdmin(req.auth);
+  const input = parse(issueSyncLicenseApiSchema, req.data);
+  try {
+    return await issueSyncLicense(input.licenseId);
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Marketing & promotion (P2B07, F5) — admin-guarded campaign planning +
+// scheduling (NON-consequential, no outward effect) and the CONSEQUENTIAL
+// outward/spending actions (publish/email/spend), each gated on the admin
+// explicitly approving (`approved: true`), mirroring adminDeliverRelease. The
+// channels are INJECTED; production passes the Real* stubs (which throw without
+// operator-supplied creds at handoff), tests pass Fake channels — NO live
+// social/email/ad call occurs in any test. Every fired outward action is logged
+// to the admin-only marketing_events sent-log.
+// ---------------------------------------------------------------------------
+
+/** Plan + persist a release campaign (NON-consequential; no outward effect). */
+export async function handlePlanCampaign(req: AdminRequest<unknown>): Promise<Campaign> {
+  assertAdmin(req.auth);
+  const input = parse(planCampaignApiSchema, req.data);
+  try {
+    return await planAndSaveCampaign(input.releaseId, {
+      budgetCents: input.budgetCents,
+      campaignId: input.campaignId,
+    });
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/**
+ * Schedule a planned campaign's steps via the injected scheduler (NON-
+ * consequential; records scheduled runs + step times, no outward effect).
+ * Production defaults to a FakeScheduler (the real Cloud Scheduler is wired at
+ * handoff); tests inject a FakeScheduler.
+ */
+export async function handleScheduleCampaign(
+  req: AdminRequest<unknown>,
+  scheduler: Scheduler = new FakeScheduler(),
+): Promise<ScheduleCampaignResult> {
+  assertAdmin(req.auth);
+  const input = parse(scheduleCampaignApiSchema, req.data);
+  try {
+    return await scheduleCampaign(input.campaignId, scheduler, {
+      baseTime: input.baseTime,
+      cadenceDays: input.cadenceDays,
+    });
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/** List all campaigns (admin-only). */
+export async function handleListCampaigns(req: AdminRequest<unknown>): Promise<Campaign[]> {
+  assertAdmin(req.auth);
+  return listCampaigns();
+}
+
+/**
+ * Publish a PUBLIC social post (CONSEQUENTIAL). The admin passing `approved:
+ * true` represents the human-in-the-loop approval; the schema requires it (a
+ * missing/false `approved` is rejected as `invalid-argument` BEFORE any post).
+ * The channel is injected (Real* in production — throws without creds; Fake in
+ * tests). Logs a marketing_events sent-log entry on success.
+ */
+export async function handlePublishSocialPost(
+  req: AdminRequest<unknown>,
+  channel: SocialChannel = new RealSocialChannel(),
+): Promise<SocialPostResult> {
+  assertAdmin(req.auth);
+  const input = parse(publishSocialPostApiSchema, req.data);
+  const result = await channel.post({
+    platform: input.platform,
+    message: input.message,
+    assetPath: input.assetPath,
+  });
+  await recordMarketingEvent({
+    id: `social__${result.postId}`,
+    kind: "social_post",
+    ref: result.postId,
+    summary: `social post to ${result.platform}`,
+    occurredAt: new Date().toISOString(),
+  });
+  return result;
+}
+
+/**
+ * Send an email blast (CONSEQUENTIAL). `approved: true` is the human-in-the-loop
+ * approval; the schema requires it. The channel is injected (Real* in production
+ * — throws without creds; Fake in tests). Logs a sent-log entry on success.
+ */
+export async function handleSendEmailBlast(
+  req: AdminRequest<unknown>,
+  channel: EmailChannel = new RealEmailChannel(),
+): Promise<EmailBlastResult> {
+  assertAdmin(req.auth);
+  const input = parse(sendEmailBlastApiSchema, req.data);
+  const result = await channel.send({
+    segment: input.segment,
+    subject: input.subject,
+    body: input.body,
+  });
+  await recordMarketingEvent({
+    id: `email__${result.sendId}`,
+    kind: "email_blast",
+    ref: result.sendId,
+    summary: `email blast to ${result.segment}`,
+    occurredAt: new Date().toISOString(),
+  });
+  return result;
+}
+
+/**
+ * Place paid-ad spend (CONSEQUENTIAL — spends money). `approved: true` is the
+ * human-in-the-loop approval; the schema requires it. The channel is injected
+ * (Real* in production — throws without creds; Fake in tests). Logs a sent-log
+ * entry on success.
+ */
+export async function handleMarketingSpend(
+  req: AdminRequest<unknown>,
+  channel: AdChannel = new RealAdChannel(),
+): Promise<AdSpendResult> {
+  assertAdmin(req.auth);
+  const input = parse(marketingSpendApiSchema, req.data);
+  const result = await channel.spend({
+    platform: input.platform,
+    budgetCents: input.budgetCents,
+    currency: input.currency,
+    objective: input.objective,
+  });
+  await recordMarketingEvent({
+    id: `ad__${result.adOrderId}`,
+    kind: "ad_spend",
+    ref: result.adOrderId,
+    summary: `ad spend on ${result.platform} (${result.budgetCents} ${result.currency})`,
+    occurredAt: new Date().toISOString(),
+  });
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Analytics & A&R (P2B08, F11 + F1) — admin-guarded ingestion, insight
+// reporting, and A&R recommendation listing. ALL NON-consequential
+// (read/propose only): no release, spend, or payout is performed. Ingestion
+// reads the local Polar `orders` mirror (no network) and, when supplied,
+// deterministic DSP-stats fixtures. The REAL DSP-stats source is operator-side
+// and is NEVER wired in here. Recommendations are PROPOSALS ONLY — recording one
+// triggers nothing; consequential acts remain behind the existing approval gates.
+// ---------------------------------------------------------------------------
+
+/**
+ * Ingest analytics for a period into the admin-only `analytics_events` store.
+ * Always pulls the local Polar `orders` mirror (D2C sales metrics); optionally
+ * also ingests deterministic DSP-stats fixtures supplied by the caller. No live
+ * analytics API is ever reached.
+ */
+export async function handleIngestAnalytics(
+  req: AdminRequest<unknown>,
+): Promise<AnalyticsIngestResult> {
+  assertAdmin(req.auth);
+  const input = parse(ingestAnalyticsApiSchema, req.data);
+  const map = input.productReleaseMap ?? {};
+  const sources: AnalyticsSource[] = [new PolarSalesSource(map)];
+  if (input.dspStats && input.dspStats.length > 0) {
+    sources.push(new FakeDSPStatsSource(input.dspStats as DspStatFixture[]));
+  }
+  return ingestAnalytics(sources, input.period);
+}
+
+/** Generate + store a deterministic insight report for a period. */
+export async function handleGenerateInsights(
+  req: AdminRequest<unknown>,
+): Promise<InsightReport> {
+  assertAdmin(req.auth);
+  const input = parse(generateInsightsApiSchema, req.data);
+  return generateInsightReport(input.period, { priorPeriod: input.priorPeriod });
+}
+
+/** Derive + store A&R recommendations (PROPOSALS ONLY) for a period. */
+export async function handleRecommendNextActions(
+  req: AdminRequest<unknown>,
+): Promise<AnrRecommendation[]> {
+  assertAdmin(req.auth);
+  const input = parse(recommendNextActionsApiSchema, req.data);
+  return recommendNextActions(input.period, { priorPeriod: input.priorPeriod });
+}
+
+/** List the stored A&R recommendations (admin-only). */
+export async function handleListRecommendations(
+  req: AdminRequest<unknown>,
+): Promise<AnrRecommendation[]> {
+  assertAdmin(req.auth);
+  return listRecommendations();
+}
+
+// ---------------------------------------------------------------------------
+// Legal/Contracts/Compliance (P2B09, F10) — admin-guarded. All NON-consequential:
+// register/activate an artist agreement, set OWNER-SUPPLIED binding license terms
+// (flips isPlaceholder:false), and run the read-only release compliance check.
+// Agreements + license terms are admin-only collections (deny ALL client access
+// in firestore.rules); the admin SDK bypasses rules so these handlers persist.
+// ---------------------------------------------------------------------------
+
+/** Register (create/overwrite) an artist agreement in DRAFT status. */
+export async function handleRegisterAgreement(
+  req: AdminRequest<unknown>,
+): Promise<ArtistAgreement> {
+  assertAdmin(req.auth);
+  const input = parse(registerAgreementApiSchema, req.data);
+  try {
+    return await registerAgreement({
+      artistId: input.artistId,
+      termMonths: input.termMonths,
+      royaltyRatePct: input.royaltyRatePct,
+      ownershipNote: input.ownershipNote,
+      aiGenerationConsent: input.aiGenerationConsent,
+      signedAt: input.signedAt,
+    });
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/** Activate an artist agreement (status "active"). Unknown-agreement -> invalid-argument. */
+export async function handleActivateAgreement(
+  req: AdminRequest<unknown>,
+): Promise<ArtistAgreement> {
+  assertAdmin(req.auth);
+  const input = parse(activateAgreementApiSchema, req.data);
+  try {
+    return await activateAgreement(input.artistId);
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/**
+ * Set OWNER-SUPPLIED binding license terms for a kind (e.g. "personal_download").
+ * Flips isPlaceholder:false. Empty wording -> invalid-argument.
+ */
+export async function handleSetLicenseTerms(req: AdminRequest<unknown>): Promise<LicenseTerms> {
+  assertAdmin(req.auth);
+  const input = parse(setLicenseTermsApiSchema, req.data);
+  try {
+    return await setLicenseTerms(input.kind, input.bodyText);
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/** Run the read-only pre-distribution compliance check for a release. */
+export async function handleCheckReleaseCompliance(
+  req: AdminRequest<unknown>,
+): Promise<ComplianceResult> {
+  assertAdmin(req.auth);
+  const input = parse(checkComplianceApiSchema, req.data);
+  return checkReleaseCompliance(input.releaseId);
+}
+
+// ---------------------------------------------------------------------------
 // Callable bindings — thin adapters from CallableRequest to the pure handlers.
 // ---------------------------------------------------------------------------
 
@@ -539,6 +1316,10 @@ const distributorApiToken = defineSecret("DISTRIBUTOR_API_TOKEN");
 export const adminDeliverRelease = onCall({ secrets: [distributorApiToken] }, (request) =>
   handleDeliverRelease(toAdminRequest(request)),
 );
+// `adminListDistributions` backs the admin distribution-status view (read-only).
+export const adminListDistributions = onCall((request) =>
+  handleListDistributions(toAdminRequest(request)),
+);
 // `runAgent` invokes the Claude-backed model factory, which reads
 // ANTHROPIC_API_KEY from the environment — bind it so the secret is present at
 // runtime (Functions v2 does not auto-inject Secret Manager values).
@@ -546,4 +1327,112 @@ const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
 
 export const runAgent = onCall({ secrets: [anthropicApiKey] }, (request) =>
   handleRunAgent(toAdminRequest(request)),
+);
+
+// Autonomy orchestration callables (P2B04): list/approve pending consequential
+// actions + review the agent audit trail. Admin-guarded; no secrets needed.
+export const adminListPendingApprovals = onCall((request) =>
+  handleListPendingApprovals(toAdminRequest(request)),
+);
+export const adminApprove = onCall((request) => handleApprove(toAdminRequest(request)));
+export const adminListAudit = onCall((request) => handleListAudit(toAdminRequest(request)));
+
+// Finance callables (P2B05, F7): ingest revenue, generate/list statements, and
+// propose payouts. Admin-guarded; no secrets needed (no live revenue/payout).
+export const adminIngestRevenue = onCall((request) =>
+  handleIngestRevenue(toAdminRequest(request)),
+);
+export const adminGenerateStatement = onCall((request) =>
+  handleGenerateStatement(toAdminRequest(request)),
+);
+export const adminListStatements = onCall((request) =>
+  handleListStatements(toAdminRequest(request)),
+);
+export const adminProposePayout = onCall((request) =>
+  handleProposePayout(toAdminRequest(request)),
+);
+
+// Publishing & sync callables (P2B06, F8/F9). Admin-guarded. `adminRegisterPro
+// Affiliation` binds the PRO_API_TOKEN secret so the RealProRegistrar can read
+// it at runtime (operator-supplied at handoff) — it throws without it, and NO
+// live PRO/MLC call occurs in any test (unit tests inject a FakeProRegistrar).
+const proApiToken = defineSecret("PRO_API_TOKEN");
+
+export const adminRegisterWork = onCall((request) => handleRegisterWork(toAdminRequest(request)));
+export const adminSetWriterSplits = onCall((request) =>
+  handleSetWriterSplits(toAdminRequest(request)),
+);
+export const adminRegisterProAffiliation = onCall({ secrets: [proApiToken] }, (request) =>
+  handleRegisterProAffiliation(toAdminRequest(request)),
+);
+export const adminAddToSyncCatalog = onCall((request) =>
+  handleAddToSyncCatalog(toAdminRequest(request)),
+);
+export const adminRequestSyncLicense = onCall((request) =>
+  handleRequestSyncLicense(toAdminRequest(request)),
+);
+export const adminClearSyncLicense = onCall((request) =>
+  handleClearSyncLicense(toAdminRequest(request)),
+);
+export const adminIssueSyncLicense = onCall((request) =>
+  handleIssueSyncLicense(toAdminRequest(request)),
+);
+
+// Marketing & promotion callables (P2B07, F5). Planning/scheduling/listing are
+// admin-guarded with no secrets (no outward effect). The CONSEQUENTIAL
+// publish/email/spend callables bind the channel secrets so the Real* channels
+// can read them at runtime (operator-supplied at handoff) — they throw without
+// them, and NO live social/email/ad call occurs in any test (unit tests inject
+// Fake channels).
+const socialApiToken = defineSecret("SOCIAL_API_TOKEN");
+const emailApiToken = defineSecret("EMAIL_API_TOKEN");
+const adsApiToken = defineSecret("ADS_API_TOKEN");
+
+export const adminPlanCampaign = onCall((request) => handlePlanCampaign(toAdminRequest(request)));
+export const adminScheduleCampaign = onCall((request) =>
+  handleScheduleCampaign(toAdminRequest(request)),
+);
+export const adminListCampaigns = onCall((request) =>
+  handleListCampaigns(toAdminRequest(request)),
+);
+export const adminPublishSocialPost = onCall({ secrets: [socialApiToken] }, (request) =>
+  handlePublishSocialPost(toAdminRequest(request)),
+);
+export const adminSendEmailBlast = onCall({ secrets: [emailApiToken] }, (request) =>
+  handleSendEmailBlast(toAdminRequest(request)),
+);
+export const adminMarketingSpend = onCall({ secrets: [adsApiToken] }, (request) =>
+  handleMarketingSpend(toAdminRequest(request)),
+);
+
+// Analytics & A&R callables (P2B08, F11 + F1). All admin-guarded; no secrets
+// needed (no live analytics / no consequential action). Ingestion/reporting/
+// recommendation are read/propose only.
+export const adminIngestAnalytics = onCall((request) =>
+  handleIngestAnalytics(toAdminRequest(request)),
+);
+export const adminGenerateInsights = onCall((request) =>
+  handleGenerateInsights(toAdminRequest(request)),
+);
+export const adminRecommendNextActions = onCall((request) =>
+  handleRecommendNextActions(toAdminRequest(request)),
+);
+export const adminListRecommendations = onCall((request) =>
+  handleListRecommendations(toAdminRequest(request)),
+);
+
+// Legal/Contracts/Compliance callables (P2B09, F10). All admin-guarded; no
+// secrets needed (no live/consequential action — records contracts/terms or runs
+// a read-only compliance check).
+export const adminRegisterAgreement = onCall((request) =>
+  handleRegisterAgreement(toAdminRequest(request)),
+);
+export const adminActivateAgreement = onCall((request) =>
+  handleActivateAgreement(toAdminRequest(request)),
+);
+export const adminSetLicenseTerms = onCall((request) =>
+  handleSetLicenseTerms(toAdminRequest(request)),
+);
+export const adminCheckReleaseCompliance = onCall((request) =>
+  handleCheckReleaseCompliance(toAdminRequest(request)),
 );

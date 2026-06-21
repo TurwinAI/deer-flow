@@ -91,6 +91,87 @@ export const FIXTURE_ORDERS: Order[] = [
   },
 ];
 
+/**
+ * A consequential agent action the autonomy ApprovalGate has BLOCKED pending the
+ * owner's human approval (mirrors the backend `ApprovalRecord`). In fixtures mode
+ * the Approvals page lists these and "Approve" removes them from the list — the
+ * offline stand-in for `adminListPendingApprovals` / `adminApprove`.
+ */
+export interface PendingApproval {
+  approvalId: string;
+  tool: string;
+  argsSummary: string;
+  createdAt: string;
+}
+
+export const FIXTURE_PENDING_APPROVALS: PendingApproval[] = [
+  {
+    approvalId: "deliver_release__a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
+    tool: "deliver_release",
+    argsSummary: 'releaseId: "foundation-stones"',
+    createdAt: "2026-06-20T09:00:00.000Z",
+  },
+  {
+    approvalId: "initiate_payout__0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+    tool: "initiate_payout",
+    argsSummary: 'payoutId: "payout__roots-untold__2026-Q2"',
+    createdAt: "2026-06-20T09:05:00.000Z",
+  },
+];
+
+/**
+ * A release's distribution status (mirrors the backend `DistributionRecord`).
+ * In fixtures mode the Distribution page lists these — the offline stand-in for
+ * the admin distribution-status read.
+ */
+export interface DistributionRow {
+  releaseId: string;
+  title: string;
+  status: "scheduled" | "delivering" | "accepted" | "delivered";
+  scheduledAt?: string;
+  deliveredAt?: string;
+}
+
+export const FIXTURE_DISTRIBUTIONS: DistributionRow[] = [
+  {
+    releaseId: "foundation-stones",
+    title: "Foundation Stones",
+    status: "delivered",
+    scheduledAt: "2026-07-04T00:00:00.000Z",
+    deliveredAt: "2026-07-04T01:00:00.000Z",
+  },
+];
+
+/**
+ * A per-artist royalty statement (mirrors the backend `RoyaltyStatement`). In
+ * fixtures mode the Royalties page lists these — the offline stand-in for
+ * `adminListStatements`. Cent fields; totals reconcile
+ * (gross - deductions - recoupment = net).
+ */
+export interface RoyaltyStatementRow {
+  id: string;
+  artistId: string;
+  artistName: string;
+  period: string;
+  grossCents: number;
+  deductionsCents: number;
+  recoupmentAppliedCents: number;
+  netCents: number;
+}
+
+export const FIXTURE_ROYALTY_STATEMENTS: RoyaltyStatementRow[] = [
+  {
+    id: "roots-untold__2026-Q2",
+    artistId: "roots-untold",
+    artistName: "Roots Untold",
+    period: "2026-Q2",
+    grossCents: 900,
+    deductionsCents: 100,
+    recoupmentAppliedCents: 0,
+    netCents: 800,
+  },
+];
+
 /** Canned transcript returned by the agent console in fixtures mode (NO LLM). */
 export const FIXTURE_AGENT_TRANSCRIPT = [
   { role: "system" as const, content: "You are PlayReggaeMusic.ai's autonomous label manager." },

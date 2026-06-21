@@ -6,6 +6,9 @@ import ArtistPage from "./pages/ArtistPage";
 import ReleasePage from "./pages/ReleasePage";
 import Admin from "./pages/Admin";
 import AgentConsole from "./pages/AgentConsole";
+import AdminApprovals from "./pages/AdminApprovals";
+import AdminDistribution from "./pages/AdminDistribution";
+import AdminRoyalties from "./pages/AdminRoyalties";
 
 /**
  * App shell: navigation + public catalog routes (B06 — home, artists, artist,
@@ -23,6 +26,9 @@ export default function App() {
           <Route path="/releases/:releaseId" element={<ReleasePage />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/admin/agent" element={<AgentConsole />} />
+          <Route path="/admin/approvals" element={<AdminApprovals />} />
+          <Route path="/admin/distribution" element={<AdminDistribution />} />
+          <Route path="/admin/royalties" element={<AdminRoyalties />} />
           <Route path="*" element={<Home />} />
         </Routes>
       </main>

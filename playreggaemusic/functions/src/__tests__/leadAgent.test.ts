@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { AIMessage } from "@langchain/core/messages";
-import { buildLabelAgent, buildLabelSystemPrompt } from "../app/agent/leadAgent";
+import { buildLabelAgent, buildLabelSystemPrompt, CONSEQUENTIAL_TOOLS } from "../app/agent/leadAgent";
 import { FakePolarClient } from "../app/polar/client";
 import type { ChatModelLike } from "../harness/runtime";
 import type { SkillRecord } from "../harness/skills";
@@ -35,6 +35,18 @@ describe("buildLabelAgent (B06 assembly)", () => {
         "create_checkout",
       ]),
     );
+  });
+
+  it("wires the analytics tools (P2B08) and they are NON-consequential (not gated)", () => {
+    const agent = buildLabelAgent({ model: new NoopModel() });
+    const names = agent.tools.map((t) => t.name);
+    expect(names).toEqual(
+      expect.arrayContaining(["ingest_analytics", "generate_insights", "recommend_next_actions"]),
+    );
+    // None of the analytics tools may be consequential (read/propose only).
+    for (const tool of ["ingest_analytics", "generate_insights", "recommend_next_actions"]) {
+      expect(CONSEQUENTIAL_TOOLS).not.toContain(tool);
+    }
   });
 
   it("omits create_checkout when no Polar client is supplied", () => {

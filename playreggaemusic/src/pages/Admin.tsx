@@ -225,6 +225,13 @@ export default function Admin() {
         Signed in as {session.email ?? session.uid}.{" "}
         <Link to="/admin/agent">Open the agent console →</Link>
       </p>
+      <nav aria-label="Admin sections" className="admin-nav">
+        <Link to="/admin/approvals">Pending approvals</Link>
+        {" · "}
+        <Link to="/admin/distribution">Distribution status</Link>
+        {" · "}
+        <Link to="/admin/royalties">Royalty statements</Link>
+      </nav>
 
       <h2>Catalog</h2>
       <div className="admin-forms">
