@@ -56,6 +56,13 @@ import { DdexDistributorClient, type DistributorClient } from "../distribution/c
 import { buildLabelAgent } from "../agent/leadAgent";
 import { createChatModel } from "../../harness/models";
 import type { ChatModelLike } from "../../harness/runtime";
+import {
+  approve,
+  listPendingApprovals,
+  listAuditEntries,
+  type ApprovalRecord,
+  type AuditEntry,
+} from "../../harness/orchestration";
 
 /**
  * The minimal auth shape the guard needs. `CallableRequest.auth` is optional
@@ -183,6 +190,14 @@ const deliverReleaseApiSchema = z.object({
 
 const runAgentSchema = z.object({
   prompt: z.string().min(1),
+});
+
+const approveSchema = z.object({
+  approvalId: z.string().min(1),
+});
+
+const listAuditSchema = z.object({
+  threadId: z.string().min(1),
 });
 
 function parse<T>(schema: z.ZodType<T>, data: unknown): T {
@@ -498,6 +513,49 @@ function roleOf(message: BaseMessage): TranscriptEntry["role"] {
 }
 
 // ---------------------------------------------------------------------------
+// Autonomy orchestration (P2B04, F12) — admin-guarded approval + audit review.
+// These drive the human-in-the-loop side of the ApprovalGate: an admin lists
+// what the agent blocked pending approval, approves a specific request (which
+// lets the SAME consequential call execute on the next run), and reviews the
+// full per-thread audit trail. The orchestration stores default to Firestore
+// (admin SDK); the handlers are auth-guarded + runtime-agnostic for unit tests.
+// ---------------------------------------------------------------------------
+
+/** List all consequential calls the agent has BLOCKED pending human approval. */
+export async function handleListPendingApprovals(
+  req: AdminRequest<unknown>,
+): Promise<ApprovalRecord[]> {
+  assertAdmin(req.auth);
+  return listPendingApprovals();
+}
+
+/**
+ * Approve one pending consequential call (the human-in-the-loop decision). After
+ * approval, the SAME (tool, args) call executes the next time the agent issues
+ * it. Unknown-approval errors surface as `invalid-argument`.
+ */
+export async function handleApprove(
+  req: AdminRequest<unknown>,
+): Promise<ApprovalRecord> {
+  assertAdmin(req.auth);
+  const input = parse(approveSchema, req.data);
+  try {
+    return await approve(input.approvalId);
+  } catch (e) {
+    throw asInvalidArgument(e);
+  }
+}
+
+/** Read a thread's full agent audit trail (every tool call, in order). */
+export async function handleListAudit(
+  req: AdminRequest<unknown>,
+): Promise<AuditEntry[]> {
+  assertAdmin(req.auth);
+  const input = parse(listAuditSchema, req.data);
+  return listAuditEntries(input.threadId);
+}
+
+// ---------------------------------------------------------------------------
 // Callable bindings — thin adapters from CallableRequest to the pure handlers.
 // ---------------------------------------------------------------------------
 
@@ -547,3 +605,11 @@ const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
 export const runAgent = onCall({ secrets: [anthropicApiKey] }, (request) =>
   handleRunAgent(toAdminRequest(request)),
 );
+
+// Autonomy orchestration callables (P2B04): list/approve pending consequential
+// actions + review the agent audit trail. Admin-guarded; no secrets needed.
+export const adminListPendingApprovals = onCall((request) =>
+  handleListPendingApprovals(toAdminRequest(request)),
+);
+export const adminApprove = onCall((request) => handleApprove(toAdminRequest(request)));
+export const adminListAudit = onCall((request) => handleListAudit(toAdminRequest(request)));

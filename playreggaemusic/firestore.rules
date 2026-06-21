@@ -67,6 +67,20 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Autonomy orchestration (P2B04, F12): the agent audit log, pending
+    // human-approval requests, and scheduled autonomous runs. All are
+    // OPERATIONAL/admin-only — deny ALL client access. The admin SDK bypasses
+    // rules so the runtime + admin callables still read/write; no client may.
+    match /audit_log/{doc=**} {
+      allow read, write: if false;
+    }
+    match /pending_approvals/{doc=**} {
+      allow read, write: if false;
+    }
+    match /scheduled_runs/{doc=**} {
+      allow read, write: if false;
+    }
+
     // Engine collections: deny ALL client access. The admin SDK bypasses
     // rules, so the runtime is unaffected; no client may read or write.
     match /threads/{doc=**} {

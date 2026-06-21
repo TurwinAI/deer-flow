@@ -40,6 +40,9 @@ export {
   adminListOrders,
   adminScheduleRelease,
   adminDeliverRelease,
+  adminListPendingApprovals,
+  adminApprove,
+  adminListAudit,
   runAgent,
 } from "./app/gateway/adminApi";
 

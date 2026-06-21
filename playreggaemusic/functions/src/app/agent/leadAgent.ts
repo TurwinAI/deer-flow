@@ -15,10 +15,36 @@ import { buildSystemPrompt } from "../../harness/agents";
 import { buildSkillsPromptSection, type SkillRecord } from "../../harness/skills";
 import { buildMemoryBlock, type MemoryFact } from "../../harness/memory";
 import { getBuiltinTools } from "../../harness/tools";
+import {
+  PlanState,
+  buildWritePlanTool,
+  type ApprovalGateDeps,
+  type ApprovalsStore,
+  type AuditStore,
+} from "../../harness/orchestration";
 import { getLabelTools } from "../label/tools";
 import { getDistributionTools } from "../distribution/tools";
 import { createCheckoutForProduct } from "../polar/checkout";
 import type { PolarClient } from "../polar/client";
+
+/**
+ * The CONSEQUENTIAL tool names this label gates (P2B04). The WIRING of which
+ * tools are consequential is an APPLICATION decision and lives here (the harness
+ * gate is generic over a name set). Today the only live consequential agent tool
+ * is the DSP delivery; payout + marketing-spend names are RESERVED so that when
+ * those tools land (P2B05/P2B07) they are gated by default.
+ *
+ * Note: `deliver_release` is reserved here even though the agent's own
+ * distribution tool set deliberately stops at scheduling (the real delivery is
+ * an admin callable with an inline `approved` boolean — kept as defense-in-depth
+ * per P2B03). Listing it makes the gate the single generic chokepoint the moment
+ * a deliver tool is exposed to the agent.
+ */
+export const CONSEQUENTIAL_TOOLS: readonly string[] = [
+  "deliver_release",
+  "initiate_payout",
+  "marketing_spend",
+];
 
 const createCheckoutSchema = z.object({
   productId: z.string().describe("Firestore product id to sell (e.g. 'foundation-stones-download')"),
@@ -74,20 +100,41 @@ export interface BuildLabelAgentDeps {
    * is not wired in.
    */
   polarClient?: PolarClient;
+  /**
+   * P2B04 ApprovalGate wiring. When supplied, the agent's tool execution passes
+   * through the generic ApprovalGate: consequential calls (CONSEQUENTIAL_TOOLS)
+   * are blocked pending approval and EVERY tool call is audited. The run context
+   * (runId/threadId) + stores are injected so the same path runs against the
+   * emulator and a fake store. When omitted, the agent runs ungated (the prior
+   * behaviour) — used by callers that gate elsewhere (e.g. admin deliver).
+   */
+  approval?: {
+    runId: string;
+    threadId: string;
+    approvalsStore?: ApprovalsStore;
+    auditStore?: AuditStore;
+    /** Override the consequential set (defaults to CONSEQUENTIAL_TOOLS). */
+    consequentialTools?: readonly string[];
+  };
 }
 
-/** The assembled agent: the compiled graph, its tools, and the system prompt. */
+/** The assembled agent: the compiled graph, its tools, prompt, and plan state. */
 export interface LabelAgent {
   graph: ReturnType<typeof buildLeadAgentGraph>;
   tools: StructuredToolInterface[];
   systemPrompt: string;
+  /** The agent's working plan (mutated by the `write_plan` tool). */
+  planState: PlanState;
 }
 
 /**
- * Build the lead label agent. Tools = harness builtins ++ label tools ++ an
- * optional create_checkout tool. System prompt = base persona ++ skills ++
- * memory. The compiled graph is returned with its tools + prompt so callers can
- * prepend the system message and invoke.
+ * Build the lead label agent. Tools = harness builtins ++ label tools ++
+ * distribution tools ++ the planner `write_plan` tool ++ an optional
+ * create_checkout tool. System prompt = base persona ++ skills ++ memory.
+ *
+ * When `approval` is supplied the compiled graph runs through the generic
+ * ApprovalGate (consequential tools blocked + every call audited); otherwise it
+ * runs ungated, exactly as before.
  */
 export function buildLabelAgent({
   model,
@@ -95,16 +142,31 @@ export function buildLabelAgent({
   skills = [],
   memoryFacts = [],
   polarClient,
+  approval,
 }: BuildLabelAgentDeps): LabelAgent {
+  const planState = new PlanState();
   const tools: StructuredToolInterface[] = [
     ...getBuiltinTools(),
     ...getLabelTools(),
     ...getDistributionTools(),
+    buildWritePlanTool(planState),
   ];
   if (polarClient) {
     tools.push(buildCreateCheckoutTool(polarClient));
   }
   const systemPrompt = buildLabelSystemPrompt(skills, memoryFacts);
-  const graph = buildLeadAgentGraph({ model, tools, checkpointer });
-  return { graph, tools, systemPrompt };
+
+  let approvalGate: ApprovalGateDeps | undefined;
+  if (approval) {
+    approvalGate = {
+      consequentialTools: approval.consequentialTools ?? CONSEQUENTIAL_TOOLS,
+      runId: approval.runId,
+      threadId: approval.threadId,
+      approvalsStore: approval.approvalsStore,
+      auditStore: approval.auditStore,
+    };
+  }
+
+  const graph = buildLeadAgentGraph({ model, tools, checkpointer, approvalGate });
+  return { graph, tools, systemPrompt, planState };
 }

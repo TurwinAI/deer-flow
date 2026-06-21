@@ -78,6 +78,10 @@ describe.skipIf(RUN)("firestore.rules (emulator)", () => {
       await setDoc(doc(db, "threads", "t1"), { threadId: "t1" });
       await setDoc(doc(db, "memory", "u1"), { seeded: true });
       await setDoc(doc(db, "checkpoints", "c1"), { id: "c1" });
+      // P2B04 autonomy-orchestration collections — admin-only / deny client.
+      await setDoc(doc(db, "audit_log", "a1"), { threadId: "t1", tool: "echo" });
+      await setDoc(doc(db, "pending_approvals", "ap1"), { tool: "deliver_release", status: "pending" });
+      await setDoc(doc(db, "scheduled_runs", "sr1"), { threadId: "t1", prompt: "go" });
     });
   });
 
@@ -241,6 +245,44 @@ describe.skipIf(RUN)("firestore.rules (emulator)", () => {
   it("NOBODY can read engine checkpoints", async () => {
     const db = testEnv.unauthenticatedContext().firestore();
     await assertFails(getDoc(doc(db, "checkpoints", "c1")));
+  });
+
+  // -- P2B04 autonomy orchestration: audit_log / pending_approvals / scheduled_runs
+
+  it("anon CANNOT read or write audit_log", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, "audit_log", "a1")));
+    await assertFails(setDoc(doc(db, "audit_log", "evil"), { tool: "hax" }));
+  });
+
+  it("non-admin authenticated user CANNOT read or write audit_log", async () => {
+    const db = testEnv.authenticatedContext("fan").firestore();
+    await assertFails(getDoc(doc(db, "audit_log", "a1")));
+    await assertFails(setDoc(doc(db, "audit_log", "evil2"), { tool: "hax" }));
+  });
+
+  it("anon CANNOT read or write pending_approvals", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, "pending_approvals", "ap1")));
+    await assertFails(setDoc(doc(db, "pending_approvals", "evil"), { status: "approved" }));
+  });
+
+  it("non-admin authenticated user CANNOT read or write pending_approvals (cannot self-approve)", async () => {
+    const db = testEnv.authenticatedContext("fan").firestore();
+    await assertFails(getDoc(doc(db, "pending_approvals", "ap1")));
+    await assertFails(setDoc(doc(db, "pending_approvals", "ap1"), { status: "approved" }));
+  });
+
+  it("anon CANNOT read or write scheduled_runs", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, "scheduled_runs", "sr1")));
+    await assertFails(setDoc(doc(db, "scheduled_runs", "evil"), { prompt: "hax" }));
+  });
+
+  it("non-admin authenticated user CANNOT read or write scheduled_runs", async () => {
+    const db = testEnv.authenticatedContext("fan").firestore();
+    await assertFails(getDoc(doc(db, "scheduled_runs", "sr1")));
+    await assertFails(setDoc(doc(db, "scheduled_runs", "evil2"), { prompt: "hax" }));
   });
 
   it("expectations registered", () => {
