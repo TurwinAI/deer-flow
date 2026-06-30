@@ -1,9 +1,9 @@
 /**
- * Releases index. Lists all label releases with links to each release page.
- * This is also the public "shop" — browse releases and buy from a release page.
+ * Releases index (SPEC §6) — the archival catalog grid. Artwork-forward tiles
+ * with mono catalog numbers. This is also the public storefront.
  */
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Container, Page, Eyebrow, Reveal, ArtworkTile } from "../components/ui";
 import { listReleases, type Release } from "../lib/catalog";
 
 export default function Releases() {
@@ -21,23 +21,39 @@ export default function Releases() {
   }, []);
 
   return (
-    <section aria-labelledby="releases-heading">
-      <h1 id="releases-heading">Releases</h1>
-      {error && <p role="alert">{error}</p>}
-      {releases === null && !error && <p>Loading releases…</p>}
-      {releases && releases.length === 0 && <p>No releases yet.</p>}
-      {releases && releases.length > 0 && (
-        <ul className="card-grid">
-          {releases.map((release) => (
-            <li key={release.id}>
-              <Link to={`/releases/${release.id}`}>{release.title}</Link>
-              <p>
-                {release.catalogNumber} · {release.type.toUpperCase()}
-              </p>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+    <Page>
+      <Container>
+        <header className="page-head">
+          <Eyebrow>The catalog</Eyebrow>
+          <h1>Releases</h1>
+          <p className="lede">
+            The full PlayReggaeMusic.ai discography — every record numbered,
+            credited, and AI-disclosed.
+          </p>
+        </header>
+
+        {error && (
+          <p role="alert" className="empty">
+            {error}
+          </p>
+        )}
+        {releases === null && !error && <p className="empty">Loading releases…</p>}
+        {releases && releases.length === 0 && <p className="empty">No releases yet.</p>}
+        {releases && releases.length > 0 && (
+          <ul className="tile-grid">
+            {releases.map((release, i) => (
+              <Reveal as="li" key={release.id} delay={i * 40}>
+                <ArtworkTile
+                  to={`/releases/${release.id}`}
+                  catalogNumber={release.catalogNumber}
+                  title={release.title}
+                  meta={release.type.toUpperCase()}
+                />
+              </Reveal>
+            ))}
+          </ul>
+        )}
+      </Container>
+    </Page>
   );
 }

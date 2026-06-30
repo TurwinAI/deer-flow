@@ -1,8 +1,10 @@
 /**
- * Artist page (B06). Bio, external links, and the artist's releases.
+ * Artist page (SPEC §6). Bio, external links, discography. Test hooks kept:
+ * h1 artist name, bio text, release link "Title (CAT)", external link labels.
  */
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
+import { Container, Page, Eyebrow, ArtworkTile } from "../components/ui";
 import {
   getArtist,
   listReleasesByArtist,
@@ -45,8 +47,24 @@ export default function ArtistPage() {
     };
   }, [artistId]);
 
-  if (error) return <p role="alert">{error}</p>;
-  if (!view) return <p>Loading artist…</p>;
+  if (error)
+    return (
+      <Page>
+        <Container>
+          <p role="alert" className="empty">
+            {error}
+          </p>
+        </Container>
+      </Page>
+    );
+  if (!view)
+    return (
+      <Page>
+        <Container>
+          <p className="empty">Loading artist…</p>
+        </Container>
+      </Page>
+    );
 
   const { artist, releases } = view;
   const links = Object.entries(artist.links).filter(([, url]) => Boolean(url)) as [
@@ -55,49 +73,61 @@ export default function ArtistPage() {
   ][];
 
   return (
-    <article aria-labelledby="artist-name">
-      <header>
-        <h1 id="artist-name">{artist.name}</h1>
-        {artist.photoPath && (
-          <img
-            className="artist-photo"
-            src={`/preview/${artist.photoPath}`}
-            alt={`Photo of ${artist.name}`}
-          />
-        )}
-        <p className="bio">{artist.bio}</p>
-      </header>
+    <Page>
+      <Container>
+        <article aria-labelledby="artist-name">
+          <header className="page-head">
+            <Eyebrow>Artist</Eyebrow>
+            <h1 id="artist-name">{artist.name}</h1>
+            {artist.photoPath && (
+              <img
+                className="artist-photo"
+                src={`/preview/${artist.photoPath}`}
+                alt={`Photo of ${artist.name}`}
+              />
+            )}
+            <p className="lede" style={{ maxWidth: "62ch" }}>
+              {artist.bio}
+            </p>
 
-      {links.length > 0 && (
-        <nav aria-label={`${artist.name} external links`}>
-          <ul className="link-list">
-            {links.map(([key, url]) => (
-              <li key={key}>
-                <a href={url} target="_blank" rel="noreferrer">
-                  {LINK_LABELS[key] ?? key}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
-      )}
+            {links.length > 0 && (
+              <nav aria-label={`${artist.name} external links`}>
+                <ul className="link-list">
+                  {links.map(([key, url]) => (
+                    <li key={key}>
+                      <a href={url} target="_blank" rel="noreferrer">
+                        {LINK_LABELS[key] ?? key}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+            )}
+          </header>
 
-      <section aria-labelledby="artist-releases">
-        <h2 id="artist-releases">Releases</h2>
-        {releases.length === 0 ? (
-          <p>No releases yet.</p>
-        ) : (
-          <ul className="card-grid">
-            {releases.map((release) => (
-              <li key={release.id}>
-                <Link to={`/releases/${release.id}`}>
-                  {release.title} ({release.catalogNumber})
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </article>
+          <section aria-labelledby="artist-releases">
+            <h2 id="artist-releases" className="eyebrow" style={{ color: "var(--text-muted)" }}>
+              Releases
+            </h2>
+            {releases.length === 0 ? (
+              <p className="empty">No releases yet.</p>
+            ) : (
+              <ul className="tile-grid">
+                {releases.map((release) => (
+                  <li key={release.id}>
+                    <ArtworkTile
+                      to={`/releases/${release.id}`}
+                      catalogNumber={release.catalogNumber}
+                      title={`${release.title} (${release.catalogNumber})`}
+                      meta={release.type.toUpperCase()}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </article>
+      </Container>
+    </Page>
   );
 }

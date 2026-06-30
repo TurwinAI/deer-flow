@@ -1,5 +1,16 @@
-* {
+/*
+ * Base / reset + element defaults. Component styles live in
+ * src/components/ui/ui.css. Page files carry layout only (grid/gap), never
+ * bespoke visual styling — see docs/design/SPEC.md §5.
+ */
+*,
+*::before,
+*::after {
   box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 html,
@@ -9,210 +20,111 @@ body {
 }
 
 body {
-  background: var(--prm-bg);
-  color: var(--prm-fg);
-  font-family: var(--prm-font-sans);
-  font-size: var(--prm-fs-400);
-  line-height: 1.55;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-synthesis: none;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: 540;
+  line-height: var(--lh-snug);
+  text-wrap: balance;
+  margin: 0;
+}
+
+h1 {
+  font-size: var(--fs-h1);
+  line-height: var(--lh-tight);
+  letter-spacing: -0.01em;
+}
+h2 {
+  font-size: var(--fs-h2);
+  letter-spacing: -0.005em;
+}
+h3 {
+  font-size: var(--fs-h3);
+}
+
+p {
+  margin: 0;
 }
 
 a {
-  color: var(--prm-accent-strong);
-  text-underline-offset: 3px;
+  color: var(--accent);
+  text-decoration: none;
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 1px;
+  transition: color var(--dur-fast) var(--ease);
+}
+a:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
 }
 
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+::selection {
+  background: var(--brass-500);
+  color: var(--ink-950);
+}
+
+/* ---- App shell -------------------------------------------------------- */
 .app-shell {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
 }
 
 .app-main {
   flex: 1;
   width: 100%;
-  max-width: var(--prm-maxw);
-  margin: 0 auto;
-  padding: var(--prm-space-5) var(--prm-space-3);
 }
 
-/* Navigation */
-.prm-nav {
-  display: flex;
-  align-items: center;
-  gap: var(--prm-space-4);
-  padding: var(--prm-space-3);
-  border-bottom: 2px solid var(--prm-brand);
-  background: var(--prm-fg);
-  color: var(--prm-parchment);
+/* Skip link for keyboard users. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--accent);
+  color: var(--on-accent);
+  padding: var(--s-2) var(--s-4);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
+  z-index: 100;
+}
+.skip-link:focus {
+  left: var(--s-4);
+  top: var(--s-4);
 }
 
-.prm-nav a {
-  color: var(--prm-parchment);
-  text-decoration: none;
-  font-size: var(--prm-fs-300);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.prm-nav a:hover {
-  color: var(--prm-accent);
-}
-
-.prm-nav .spacer {
-  flex: 1;
-}
-
-/* Label mark / imprint stamp */
-.label-mark {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--prm-space-2);
-  font-family: var(--prm-font-display);
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-.label-mark .stamp {
-  display: inline-grid;
-  place-items: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  border: 2px solid var(--prm-accent);
-  border-radius: 50%;
-  color: var(--prm-accent);
-  font-size: var(--prm-fs-300);
-  font-weight: 700;
-}
-
-/* Home hero */
-.hero h1 {
-  font-family: var(--prm-font-display);
-  font-size: var(--prm-fs-900);
-  line-height: 1.05;
-  margin: 0 0 var(--prm-space-3);
-  color: var(--prm-brand);
-}
-
-.hero .tagline {
-  font-size: var(--prm-fs-500);
-  color: var(--prm-muted);
-  max-width: 46ch;
-}
-
-.ai-badge {
-  display: inline-block;
-  margin-top: var(--prm-space-4);
-  padding: var(--prm-space-1) var(--prm-space-3);
-  border: 1px solid var(--prm-line);
-  border-radius: 999px;
-  font-size: var(--prm-fs-300);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--prm-clay);
-}
-
-/* Footer */
-.app-footer {
-  display: flex;
-  align-items: center;
-  gap: var(--prm-space-3);
-  padding: var(--prm-space-4) var(--prm-space-3);
-  border-top: 1px solid var(--prm-line);
-  font-size: var(--prm-fs-300);
-  color: var(--prm-muted);
-}
-
-.imprint-mark {
-  display: inline-grid;
-  place-items: center;
-  width: 2rem;
-  height: 2rem;
-  border: 1px solid var(--prm-accent);
-  border-radius: 50%;
-  color: var(--prm-accent-strong);
-  font-family: var(--prm-font-display);
-  font-weight: 700;
-  font-size: var(--prm-fs-300);
-}
-
-/* Catalog UI (B06) */
-.card-grid {
-  list-style: none;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
-  gap: var(--prm-space-4);
-}
-
-.release-header {
-  margin-bottom: var(--prm-space-4);
-}
-
-.catalog-number {
-  font-family: var(--prm-font-display);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--prm-muted);
-  margin: 0;
-}
-
-.tracklist {
-  padding-left: var(--prm-space-4);
-  display: grid;
-  gap: var(--prm-space-3);
-}
-
-.tracklist li {
-  display: grid;
-  gap: var(--prm-space-2);
-}
-
-.tracklist .track-duration {
-  color: var(--prm-muted);
-  font-size: var(--prm-fs-300);
-}
-
-.tracklist audio {
-  width: 100%;
-  max-width: 28rem;
-}
-
-.buy button {
-  font: inherit;
-  padding: var(--prm-space-2) var(--prm-space-4);
-  border: 2px solid var(--prm-brand);
-  background: var(--prm-brand);
-  color: var(--prm-parchment);
-  border-radius: var(--prm-radius);
-  cursor: pointer;
-}
-
-.buy button:disabled {
-  opacity: 0.6;
-  cursor: progress;
-}
-
-.license-note {
-  margin-top: var(--prm-space-4);
-  padding: var(--prm-space-3);
-  border: 1px solid var(--prm-line);
-  border-radius: var(--prm-radius);
-  font-size: var(--prm-fs-300);
-  color: var(--prm-muted);
-  max-width: 60ch;
-}
-
-.link-list {
-  list-style: none;
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--prm-space-3);
-}
-
-.artist-photo {
-  max-width: 18rem;
-  height: auto;
-  border-radius: var(--prm-radius);
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

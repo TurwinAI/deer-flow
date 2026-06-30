@@ -1,45 +1,105 @@
 /*
- * PlayReggaeMusic.ai — design tokens (B01 baseline).
+ * PlayReggaeMusic.ai — design tokens (committed in docs/design/SPEC.md §1–§4).
  *
- * Register: heritage reggae imprint culture (Studio One / Trojan / VP-era)
- * carried into a modern AI-native label. Warm and rooted, tasteful — no
- * cliche Rasta-stripe filler. Final palette + type scale are refined in the
- * design batch via the taste-profiler; these are the workable baseline.
+ * Direction: "The Archive & The Desk." Warm off-black archival ground, bone
+ * paper for long-form, ONE signature accent (brass gold) carrying the reggae
+ * heritage by restraint. Neutrals are warm-biased — never pure grey/black/white.
+ * Boldness is spent on typography + dub-echo motion, not a second hue.
  */
 :root {
-  /* Core palette — warm, rooted, earthy */
-  --prm-parchment: #f4ecd8; /* cream / sleeve paper */
-  --prm-ink: #1c1a17; /* near-black warm ink */
-  --prm-forest: #1f4d3a; /* deep roots green */
-  --prm-gold: #c9912b; /* warm amber gold (stamp foil) */
-  --prm-oxblood: #7c2b22; /* rich red-brown */
-  --prm-clay: #b5651d; /* warm clay accent */
+  /* ---- Palette ---------------------------------------------------------- */
+  --ink-950: #14110d; /* primary dark ground (warm near-black) */
+  --ink-900: #1c1813; /* raised dark surface / cards on dark */
+  --ink-850: #221d16; /* hover surface on dark */
+  --ink-800: #2a241c; /* hairlines / borders on dark */
+  --bone-50: #f4efe4; /* paper ground + text on dark */
+  --bone-100: #e9e1d1; /* secondary paper / muted-light */
+  --bone-200: #ddd3bf; /* paper hairline */
 
-  /* Semantic surfaces */
-  --prm-bg: var(--prm-parchment);
-  --prm-fg: var(--prm-ink);
-  --prm-accent: var(--prm-gold);
-  --prm-accent-strong: var(--prm-oxblood);
-  --prm-brand: var(--prm-forest);
-  --prm-muted: #6b6457;
-  --prm-line: #d8ccae;
+  --sand-400: #a89c84; /* muted text on dark (warm grey) */
+  --sand-600: #6e6552; /* muted text on paper */
 
-  /* Typography — strong ownable display + clean reading sans */
-  --prm-font-display: "Times New Roman", Georgia, "Iowan Old Style", serif;
-  --prm-font-sans:
-    system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --prm-fs-900: clamp(2.5rem, 6vw, 4rem);
-  --prm-fs-700: clamp(1.75rem, 3.5vw, 2.5rem);
-  --prm-fs-500: 1.25rem;
-  --prm-fs-400: 1rem;
-  --prm-fs-300: 0.875rem;
+  --brass-400: #d8b25a; /* accent highlight */
+  --brass-500: #c79a3a; /* THE accent — on dark: links/CTA/emphasis/seal */
+  --brass-600: #a87f28; /* accent fill hover */
+  --brass-700: #8a6a1e; /* accent text on paper (AA on bone) */
 
-  /* Spacing + radii */
-  --prm-space-1: 0.25rem;
-  --prm-space-2: 0.5rem;
-  --prm-space-3: 1rem;
-  --prm-space-4: 1.5rem;
-  --prm-space-5: 2.5rem;
-  --prm-radius: 6px;
-  --prm-maxw: 1100px;
+  --roots-700: #1e4d38; /* deep heritage green — rare seals/dividers */
+  --oxblood-700: #7e2b22; /* deep heritage red — rare, never a field */
+
+  /* Semantic (admin/UI state only — never on marketing pages) */
+  --ok-600: #2e7d52;
+  --warn-600: #b5851f;
+  --danger-600: #b23a2e;
+
+  /* ---- Ground-aware roles (defaults = dark marketing ground) ------------ */
+  --bg: var(--ink-950);
+  --surface: var(--ink-900);
+  --surface-hover: var(--ink-850);
+  --line: var(--ink-800);
+  --text: var(--bone-50);
+  --text-muted: var(--sand-400);
+  --accent: var(--brass-500);
+  --accent-hover: var(--brass-400);
+  --on-accent: var(--ink-950);
+  --focus: var(--brass-400);
+
+  /* ---- Typography ------------------------------------------------------- */
+  --font-display: "Fraunces Variable", Fraunces, Georgia, "Times New Roman", serif;
+  --font-sans: "Inter Variable", Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Space Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --fs-display: clamp(2.75rem, 7vw, 6rem);
+  --fs-h1: clamp(2rem, 4vw, 3.25rem);
+  --fs-h2: clamp(1.5rem, 2.5vw, 2.25rem);
+  --fs-h3: 1.25rem;
+  --fs-body: 1.0625rem;
+  --fs-sm: 0.9375rem;
+  --fs-mono: 0.8125rem;
+  --fs-eyebrow: 0.75rem;
+
+  --lh-tight: 1.05;
+  --lh-snug: 1.2;
+  --lh-body: 1.6;
+  --tracking-eyebrow: 0.14em;
+  --tracking-mono: 0.04em;
+
+  /* ---- Space / radius / layout ------------------------------------------ */
+  --s-1: 0.25rem;
+  --s-2: 0.5rem;
+  --s-3: 0.75rem;
+  --s-4: 1rem;
+  --s-5: 1.5rem;
+  --s-6: 2rem;
+  --s-7: 3rem;
+  --s-8: 4rem;
+  --s-10: 6rem;
+
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-art: 2px;
+  --r-pill: 999px;
+
+  --maxw: 1200px;
+  --maxw-read: 68ch;
+
+  /* ---- Motion ----------------------------------------------------------- */
+  --dur-fast: 160ms;
+  --dur: 240ms;
+  --ease: cubic-bezier(0.2, 0.6, 0.2, 1);
+  --shadow-art: 0 18px 40px -18px rgba(0, 0, 0, 0.65);
+}
+
+/* Long-form / paper ground — applied per page via the Page component. */
+.ground-paper {
+  --bg: var(--bone-50);
+  --surface: #fbf8f0;
+  --surface-hover: var(--bone-100);
+  --line: var(--bone-200);
+  --text: var(--ink-950);
+  --text-muted: var(--sand-600);
+  --accent: var(--brass-700);
+  --accent-hover: var(--brass-600);
+  --on-accent: var(--bone-50);
+  --focus: var(--brass-600);
 }
