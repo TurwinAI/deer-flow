@@ -1,68 +1,78 @@
 /*
- * PlayReggaeMusic.ai — design tokens (committed in docs/design/SPEC.md §1–§4).
+ * PlayReggaeMusic.ai — design tokens (rev. 2, docs/design/SPEC.md).
  *
- * Direction: "The Archive & The Desk." Warm off-black archival ground, bone
- * paper for long-form, ONE signature accent (brass gold) carrying the reggae
- * heritage by restraint. Neutrals are warm-biased — never pure grey/black/white.
- * Boldness is spent on typography + dub-echo motion, not a second hue.
+ * Direction: modern, content-first label — the catalog is the page. A single
+ * neo-grotesque set big/tight/lowercase (Mona Sans), mono ledger metadata
+ * (JetBrains Mono), flat square surfaces, near-black ground so artwork carries
+ * the color, ONE restrained accent. Deliberately NOT the serif-on-cream look.
  */
 :root {
-  /* ---- Palette ---------------------------------------------------------- */
-  --ink-950: #14110d; /* primary dark ground (warm near-black) */
-  --ink-900: #1c1813; /* raised dark surface / cards on dark */
-  --ink-850: #221d16; /* hover surface on dark */
-  --ink-800: #2a241c; /* hairlines / borders on dark */
-  --bone-50: #f4efe4; /* paper ground + text on dark */
-  --bone-100: #e9e1d1; /* secondary paper / muted-light */
-  --bone-200: #ddd3bf; /* paper hairline */
+  /* ---- Palette: neutral near-black + off-white, one accent --------------- */
+  --ink-950: #0c0c0d; /* page ground (near-black, faint cool) */
+  --ink-900: #141416; /* raised surface */
+  --ink-850: #1a1a1d; /* hover surface */
+  --ink-800: #242428; /* hairline on dark */
+  --ink-700: #34343a; /* stronger border */
 
-  --sand-400: #a89c84; /* muted text on dark (warm grey) */
-  --sand-600: #6e6552; /* muted text on paper */
+  --paper-50: #f6f5f2; /* paper ground (long-form) */
+  --paper-100: #ecebe6; /* secondary paper */
+  --paper-200: #deded7; /* paper hairline */
 
-  --brass-400: #d8b25a; /* accent highlight */
-  --brass-500: #c79a3a; /* THE accent — on dark: links/CTA/emphasis/seal */
-  --brass-600: #a87f28; /* accent fill hover */
-  --brass-700: #8a6a1e; /* accent text on paper (AA on bone) */
+  --fg-50: #f4f3f1; /* primary text on dark */
+  --mut-dark: #8c8c93; /* muted text on dark (cool grey) */
+  --mut-paper: #6a6a66; /* muted text on paper */
 
-  --roots-700: #1e4d38; /* deep heritage green — rare seals/dividers */
-  --oxblood-700: #7e2b22; /* deep heritage red — rare, never a field */
+  /* Accent — a single confident "sound-system amber". Warm but clean, not the
+     luxe-gold cliché; pops on near-black, dims to AA on paper. */
+  --amber-400: #f2b53b;
+  --amber-500: #e7a127; /* THE accent (on dark) */
+  --amber-600: #c9851a;
+  --amber-700: #9c6510; /* accent text on paper (AA) */
 
-  /* Semantic (admin/UI state only — never on marketing pages) */
+  --roots-600: #1f7a4d; /* heritage green — rare, used only as a label tone */
+
+  /* Semantic (admin/UI only) */
   --ok-600: #2e7d52;
   --warn-600: #b5851f;
-  --danger-600: #b23a2e;
+  --danger-600: #c2402f;
 
-  /* ---- Ground-aware roles (defaults = dark marketing ground) ------------ */
+  /* ---- Ground-aware roles (defaults = dark) ----------------------------- */
   --bg: var(--ink-950);
   --surface: var(--ink-900);
   --surface-hover: var(--ink-850);
   --line: var(--ink-800);
-  --text: var(--bone-50);
-  --text-muted: var(--sand-400);
-  --accent: var(--brass-500);
-  --accent-hover: var(--brass-400);
-  --on-accent: var(--ink-950);
-  --focus: var(--brass-400);
+  --line-strong: var(--ink-700);
+  --text: var(--fg-50);
+  --text-muted: var(--mut-dark);
+  --accent: var(--amber-500);
+  --accent-hover: var(--amber-400);
+  --on-accent: #0c0c0d;
+  --focus: var(--amber-400);
 
-  /* ---- Typography ------------------------------------------------------- */
-  --font-display: "Fraunces Variable", Fraunces, Georgia, "Times New Roman", serif;
-  --font-sans: "Inter Variable", Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "Space Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  /* ---- Type: one grotesque, big & tight; mono for data ------------------ */
+  --font-display: "Mona Sans Variable", "Mona Sans", system-ui, sans-serif;
+  --font-sans: "Hanken Grotesk Variable", "Hanken Grotesk", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, monospace;
 
-  --fs-display: clamp(2.75rem, 7vw, 6rem);
-  --fs-h1: clamp(2rem, 4vw, 3.25rem);
-  --fs-h2: clamp(1.5rem, 2.5vw, 2.25rem);
-  --fs-h3: 1.25rem;
+  /* Expanded display width for hero/section heads (Mona Sans wdth axis). */
+  --wide: "wght" 680, "wdth" 112;
+  --wide-light: "wght" 560, "wdth" 110;
+
+  --fs-display: clamp(2.6rem, 8vw, 7rem);
+  --fs-h1: clamp(2rem, 5vw, 3.5rem);
+  --fs-h2: clamp(1.4rem, 2.6vw, 2rem);
+  --fs-h3: 1.15rem;
   --fs-body: 1.0625rem;
   --fs-sm: 0.9375rem;
-  --fs-mono: 0.8125rem;
-  --fs-eyebrow: 0.75rem;
+  --fs-mono: 0.78rem;
+  --fs-eyebrow: 0.72rem;
 
-  --lh-tight: 1.05;
-  --lh-snug: 1.2;
+  --lh-tight: 0.96;
+  --lh-snug: 1.08;
   --lh-body: 1.6;
-  --tracking-eyebrow: 0.14em;
-  --tracking-mono: 0.04em;
+  --track-tight: -0.02em;
+  --track-mono: 0.02em;
+  --track-eyebrow: 0.16em;
 
   /* ---- Space / radius / layout ------------------------------------------ */
   --s-1: 0.25rem;
@@ -75,31 +85,32 @@
   --s-8: 4rem;
   --s-10: 6rem;
 
-  --r-sm: 4px;
-  --r-md: 8px;
-  --r-art: 2px;
-  --r-pill: 999px;
+  /* Flat & square — the modern-grotesque tell. */
+  --r-sm: 0px;
+  --r-md: 2px;
+  --r-art: 0px;
 
-  --maxw: 1200px;
-  --maxw-read: 68ch;
+  --maxw: 1400px;
+  --maxw-read: 64ch;
+  --player-h: 4.25rem;
 
   /* ---- Motion ----------------------------------------------------------- */
-  --dur-fast: 160ms;
-  --dur: 240ms;
-  --ease: cubic-bezier(0.2, 0.6, 0.2, 1);
-  --shadow-art: 0 18px 40px -18px rgba(0, 0, 0, 0.65);
+  --dur-fast: 140ms;
+  --dur: 220ms;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
-/* Long-form / paper ground — applied per page via the Page component. */
+/* Long-form / paper ground. */
 .ground-paper {
-  --bg: var(--bone-50);
-  --surface: #fbf8f0;
-  --surface-hover: var(--bone-100);
-  --line: var(--bone-200);
+  --bg: var(--paper-50);
+  --surface: #fff;
+  --surface-hover: var(--paper-100);
+  --line: var(--paper-200);
+  --line-strong: #cfcfc8;
   --text: var(--ink-950);
-  --text-muted: var(--sand-600);
-  --accent: var(--brass-700);
-  --accent-hover: var(--brass-600);
-  --on-accent: var(--bone-50);
-  --focus: var(--brass-600);
+  --text-muted: var(--mut-paper);
+  --accent: var(--amber-700);
+  --accent-hover: var(--amber-600);
+  --on-accent: var(--paper-50);
+  --focus: var(--amber-600);
 }

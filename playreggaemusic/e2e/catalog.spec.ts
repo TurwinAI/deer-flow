@@ -26,8 +26,10 @@ test("browse catalog, buy (mocked), admin CRUD, and trigger an agent run", async
   await expect(page.getByRole("heading", { name: "Roots Untold", level: 1 })).toBeVisible();
 
   // --- Foundation Stones release page -----------------------------------
-  await page.getByRole("link", { name: /Foundation Stones \(PRM-001\)/ }).click();
-  await expect(page.getByRole("heading", { name: "Foundation Stones", level: 1 })).toBeVisible();
+  // Click the caption link (below the artwork; the centered play button overlays
+  // the cover link, so target the caption to navigate).
+  await page.locator("a.tile__cap").filter({ hasText: /foundation stones/i }).first().click();
+  await expect(page.getByRole("heading", { name: /foundation stones/i, level: 1 })).toBeVisible();
 
   // Tracklist, AI badge, and personal-license note are all visible.
   await expect(page.getByText("Jah Light Dub")).toBeVisible();

@@ -15,5 +15,6 @@ export { default as Reveal } from "./Reveal";
 export { default as Marquee } from "./Marquee";
 export { default as SiteHeader } from "./SiteHeader";
 export { default as SiteFooter } from "./SiteFooter";
-export { ReleaseArt, ArtworkTile, ArtistCard } from "./cards";
+export { ReleaseArt, ReleaseTile, ReleaseRow, ArtistCard, PlayButton } from "./cards";
 export { SectionHeading, LicenseNote } from "./sections";
+export { PlayerProvider, usePlayer, PlayButton as TrackPlayButton } from "./player";

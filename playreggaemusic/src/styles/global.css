@@ -35,8 +35,9 @@ h2,
 h3,
 h4 {
   font-family: var(--font-display);
-  font-weight: 540;
+  font-weight: 640;
   line-height: var(--lh-snug);
+  letter-spacing: var(--track-tight);
   text-wrap: balance;
   margin: 0;
 }
@@ -44,14 +45,13 @@ h4 {
 h1 {
   font-size: var(--fs-h1);
   line-height: var(--lh-tight);
-  letter-spacing: -0.01em;
 }
 h2 {
   font-size: var(--fs-h2);
-  letter-spacing: -0.005em;
 }
 h3 {
   font-size: var(--fs-h3);
+  letter-spacing: -0.01em;
 }
 
 p {

@@ -4,7 +4,7 @@
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Container, Page, Eyebrow, ArtworkTile } from "../components/ui";
+import { Container, Page, Eyebrow, ReleaseTile } from "../components/ui";
 import {
   getArtist,
   listReleasesByArtist,
@@ -115,12 +115,7 @@ export default function ArtistPage() {
               <ul className="tile-grid">
                 {releases.map((release) => (
                   <li key={release.id}>
-                    <ArtworkTile
-                      to={`/releases/${release.id}`}
-                      catalogNumber={release.catalogNumber}
-                      title={`${release.title} (${release.catalogNumber})`}
-                      meta={release.type.toUpperCase()}
-                    />
+                    <ReleaseTile release={release} artistName={artist.name} />
                   </li>
                 ))}
               </ul>

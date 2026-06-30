@@ -22,8 +22,7 @@ describe("App shell", () => {
         <App />
       </MemoryRouter>,
     );
-    // Hero AI badge + footer standing disclosure.
-    expect(screen.getByText(/ai-generated music/i)).toBeInTheDocument();
+    // Standing footer disclosure (provenance is disclosed site-wide).
     expect(screen.getByText(/every release is ai-generated/i)).toBeInTheDocument();
   });
 

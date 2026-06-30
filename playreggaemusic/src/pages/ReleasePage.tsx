@@ -13,6 +13,7 @@ import {
   Tag,
   Button,
   LicenseNote,
+  PlayButton,
 } from "../components/ui";
 import { ReleaseArt } from "../components/ui/cards";
 import {
@@ -139,18 +140,18 @@ export default function ReleasePage() {
               <ol className="tracklist">
                 {tracks.map((track, i) => (
                   <li className="track" key={track.id}>
+                    <PlayButton
+                      track={{
+                        id: `${release.id}:${track.id}`,
+                        title: track.title,
+                        subtitle: `${release.title} · ${release.catalogNumber}`,
+                        src: previewUrl(track.previewClipPath),
+                      }}
+                      label={track.title}
+                    />
                     <span className="track__no">{String(i + 1).padStart(2, "0")}</span>
                     <span className="track__title">{track.title}</span>
                     <span className="track__dur">{formatDuration(track.durationSec)}</span>
-                    <audio
-                      className="track__audio"
-                      controls
-                      preload="none"
-                      src={previewUrl(track.previewClipPath)}
-                      aria-label={`Preview of ${track.title}`}
-                    >
-                      Your browser does not support audio preview playback.
-                    </audio>
                   </li>
                 ))}
               </ol>

@@ -65,3 +65,36 @@ Per `MANIFEST.md`. One entry per batch. Verification is runnable output.
 - Departed deliberately from the previous tokens (cream + serif + system font =
   the AI-template cluster) → warm-black archival ground + brass + Fraunces/Inter/
   Space Mono + generative 7" roundel art.
+
+---
+
+## REV 2 — modern-grotesque pivot (after design review)
+
+Feedback: rev.1 still read AI-picked — serif (Fraunces) on warm ground is itself
+a flagged AI-default; copy too heavy; no visible interactivity. Re-researched
+modern, content-first label design (Warp et al.) + modern OSS grotesques.
+
+**Changes**
+- **Type:** dropped Fraunces/Inter/Space Mono → **Mona Sans** (display, expanded
+  width axis) + **Hanken Grotesk** (body) + **JetBrains Mono** (catalog data).
+  Single neo-grotesque set big/tight/lowercase — the Warp/Vercel/GitHub model.
+- **Palette:** warm cream/brass → neutral near-black (`#0c0c0d`) + off-white,
+  one amber accent (`#e7a127`); artwork carries color. Flat & square (radii ~0),
+  no drop shadows.
+- **Layout:** killed the hero + lede + feature-cards + CTA. **Catalog is the
+  homepage** — one line of copy (the `h1`), then the release grid. Releases page
+  gains a **grid⇄list (discography ledger)** toggle. Mono ledger metadata.
+- **Interaction (new):** a real **audio player** — global `PlayerProvider`,
+  per-track + per-release **play buttons** (hover-reveal on tiles, lazy-load the
+  first preview), a **persistent docked now-playing bar** with scrubber + an
+  animated **equalizer**. `prefers-reduced-motion` safe; degrades to a no-op
+  outside the provider (so unit tests need no wiring).
+
+**Verified (post-pivot):** typecheck 0 · lint 0 (1 fast-refresh warning) · web
+tests **23** (incl. axe) · build OK (fonts self-hosted) · **E2E 2/2**.
+- Test updates for the new interaction: ReleasePage asserts the inline play
+  button (was `<audio>`); ArtistPage asserts the release link by href + cat#;
+  App drops the removed hero badge (keeps the footer disclosure); catalog E2E
+  targets the caption link (the centered play button overlays the cover link).
+- Render-verified by screenshot (`v2-*.png`): home, home+player, releases grid,
+  releases list, release detail, about, mobile.

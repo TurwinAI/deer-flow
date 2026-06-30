@@ -48,7 +48,12 @@ describe("ArtistPage (B06)", () => {
     renderPage();
     expect(await screen.findByRole("heading", { name: /roots untold/i, level: 1 })).toBeInTheDocument();
     expect(screen.getByText(/flagship roots-reggae project/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /foundation stones \(prm-001\)/i })).toBeInTheDocument();
+    // The artist's release is linked (catalog tile -> /releases/:id) and shows its cat#.
+    const relLinks = screen
+      .getAllByRole("link")
+      .filter((a) => a.getAttribute("href") === "/releases/foundation-stones");
+    expect(relLinks.length).toBeGreaterThan(0);
+    expect(screen.getAllByText("PRM-001").length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: /spotify/i })).toBeInTheDocument();
   });
 
