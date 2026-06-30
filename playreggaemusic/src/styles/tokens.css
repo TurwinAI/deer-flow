@@ -1,45 +1,116 @@
 /*
- * PlayReggaeMusic.ai — design tokens (B01 baseline).
+ * PlayReggaeMusic.ai — design tokens (rev. 2, docs/design/SPEC.md).
  *
- * Register: heritage reggae imprint culture (Studio One / Trojan / VP-era)
- * carried into a modern AI-native label. Warm and rooted, tasteful — no
- * cliche Rasta-stripe filler. Final palette + type scale are refined in the
- * design batch via the taste-profiler; these are the workable baseline.
+ * Direction: modern, content-first label — the catalog is the page. A single
+ * neo-grotesque set big/tight/lowercase (Mona Sans), mono ledger metadata
+ * (JetBrains Mono), flat square surfaces, near-black ground so artwork carries
+ * the color, ONE restrained accent. Deliberately NOT the serif-on-cream look.
  */
 :root {
-  /* Core palette — warm, rooted, earthy */
-  --prm-parchment: #f4ecd8; /* cream / sleeve paper */
-  --prm-ink: #1c1a17; /* near-black warm ink */
-  --prm-forest: #1f4d3a; /* deep roots green */
-  --prm-gold: #c9912b; /* warm amber gold (stamp foil) */
-  --prm-oxblood: #7c2b22; /* rich red-brown */
-  --prm-clay: #b5651d; /* warm clay accent */
+  /* ---- Palette: neutral near-black + off-white, one accent --------------- */
+  --ink-950: #0c0c0d; /* page ground (near-black, faint cool) */
+  --ink-900: #141416; /* raised surface */
+  --ink-850: #1a1a1d; /* hover surface */
+  --ink-800: #242428; /* hairline on dark */
+  --ink-700: #34343a; /* stronger border */
 
-  /* Semantic surfaces */
-  --prm-bg: var(--prm-parchment);
-  --prm-fg: var(--prm-ink);
-  --prm-accent: var(--prm-gold);
-  --prm-accent-strong: var(--prm-oxblood);
-  --prm-brand: var(--prm-forest);
-  --prm-muted: #6b6457;
-  --prm-line: #d8ccae;
+  --paper-50: #f6f5f2; /* paper ground (long-form) */
+  --paper-100: #ecebe6; /* secondary paper */
+  --paper-200: #deded7; /* paper hairline */
 
-  /* Typography — strong ownable display + clean reading sans */
-  --prm-font-display: "Times New Roman", Georgia, "Iowan Old Style", serif;
-  --prm-font-sans:
-    system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --prm-fs-900: clamp(2.5rem, 6vw, 4rem);
-  --prm-fs-700: clamp(1.75rem, 3.5vw, 2.5rem);
-  --prm-fs-500: 1.25rem;
-  --prm-fs-400: 1rem;
-  --prm-fs-300: 0.875rem;
+  --fg-50: #f4f3f1; /* primary text on dark */
+  --mut-dark: #8c8c93; /* muted text on dark (cool grey) */
+  --mut-paper: #6a6a66; /* muted text on paper */
 
-  /* Spacing + radii */
-  --prm-space-1: 0.25rem;
-  --prm-space-2: 0.5rem;
-  --prm-space-3: 1rem;
-  --prm-space-4: 1.5rem;
-  --prm-space-5: 2.5rem;
-  --prm-radius: 6px;
-  --prm-maxw: 1100px;
+  /* Accent — a single confident "sound-system amber". Warm but clean, not the
+     luxe-gold cliché; pops on near-black, dims to AA on paper. */
+  --amber-400: #f2b53b;
+  --amber-500: #e7a127; /* THE accent (on dark) */
+  --amber-600: #c9851a;
+  --amber-700: #9c6510; /* accent text on paper (AA) */
+
+  --roots-600: #1f7a4d; /* heritage green — rare, used only as a label tone */
+
+  /* Semantic (admin/UI only) */
+  --ok-600: #2e7d52;
+  --warn-600: #b5851f;
+  --danger-600: #c2402f;
+
+  /* ---- Ground-aware roles (defaults = dark) ----------------------------- */
+  --bg: var(--ink-950);
+  --surface: var(--ink-900);
+  --surface-hover: var(--ink-850);
+  --line: var(--ink-800);
+  --line-strong: var(--ink-700);
+  --text: var(--fg-50);
+  --text-muted: var(--mut-dark);
+  --accent: var(--amber-500);
+  --accent-hover: var(--amber-400);
+  --on-accent: #0c0c0d;
+  --focus: var(--amber-400);
+
+  /* ---- Type: one grotesque, big & tight; mono for data ------------------ */
+  --font-display: "Mona Sans Variable", "Mona Sans", system-ui, sans-serif;
+  --font-sans: "Hanken Grotesk Variable", "Hanken Grotesk", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, monospace;
+
+  /* Expanded display width for hero/section heads (Mona Sans wdth axis). */
+  --wide: "wght" 680, "wdth" 112;
+  --wide-light: "wght" 560, "wdth" 110;
+
+  --fs-display: clamp(2.6rem, 8vw, 7rem);
+  --fs-h1: clamp(2rem, 5vw, 3.5rem);
+  --fs-h2: clamp(1.4rem, 2.6vw, 2rem);
+  --fs-h3: 1.15rem;
+  --fs-body: 1.0625rem;
+  --fs-sm: 0.9375rem;
+  --fs-mono: 0.78rem;
+  --fs-eyebrow: 0.72rem;
+
+  --lh-tight: 0.96;
+  --lh-snug: 1.08;
+  --lh-body: 1.6;
+  --track-tight: -0.02em;
+  --track-mono: 0.02em;
+  --track-eyebrow: 0.16em;
+
+  /* ---- Space / radius / layout ------------------------------------------ */
+  --s-1: 0.25rem;
+  --s-2: 0.5rem;
+  --s-3: 0.75rem;
+  --s-4: 1rem;
+  --s-5: 1.5rem;
+  --s-6: 2rem;
+  --s-7: 3rem;
+  --s-8: 4rem;
+  --s-10: 6rem;
+
+  /* Flat & square — the modern-grotesque tell. */
+  --r-sm: 0px;
+  --r-md: 2px;
+  --r-art: 0px;
+
+  --maxw: 1400px;
+  --maxw-read: 64ch;
+  --player-h: 4.25rem;
+
+  /* ---- Motion ----------------------------------------------------------- */
+  --dur-fast: 140ms;
+  --dur: 220ms;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* Long-form / paper ground. */
+.ground-paper {
+  --bg: var(--paper-50);
+  --surface: #fff;
+  --surface-hover: var(--paper-100);
+  --line: var(--paper-200);
+  --line-strong: #cfcfc8;
+  --text: var(--ink-950);
+  --text-muted: var(--mut-paper);
+  --accent: var(--amber-700);
+  --accent-hover: var(--amber-600);
+  --on-accent: var(--paper-50);
+  --focus: var(--amber-600);
 }

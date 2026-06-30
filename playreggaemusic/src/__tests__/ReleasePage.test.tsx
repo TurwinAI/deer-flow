@@ -70,8 +70,8 @@ describe("ReleasePage (B06)", () => {
     // Tracklist
     expect(screen.getByText("Jah Light Dub")).toBeInTheDocument();
     expect(screen.getAllByRole("listitem").length).toBeGreaterThanOrEqual(2);
-    // Preview playback affordance (<audio> with accessible label)
-    expect(screen.getByLabelText(/preview of foundation stones/i)).toBeInTheDocument();
+    // Preview playback affordance (inline play button feeding the global player)
+    expect(screen.getByRole("button", { name: /play foundation stones/i })).toBeInTheDocument();
 
     // AI badge
     expect(screen.getByLabelText(/this release is ai-generated/i)).toBeInTheDocument();

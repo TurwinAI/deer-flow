@@ -1,33 +1,27 @@
 /**
- * Label home (B06). Hero + a featured release and artist spotlight pulled from
- * the catalog. The hero heading + AI badge are always present (the App shell
- * test relies on them); featured content loads from the catalog lib (mocked in
- * tests).
+ * Landing (rev. 2 — catalog-led, docs/design/SPEC.md). No hero, no marketing
+ * prose: one line of copy, then the catalog. The single <h1> ("the home of AI
+ * reggae music") is kept as that one line (tests rely on it); below it the
+ * release grid leads, with hover/inline play feeding the docked player.
  */
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import AiBadge from "../components/AiBadge";
-import {
-  listArtists,
-  listReleases,
-  type Artist,
-  type Release,
-} from "../lib/catalog";
+import { Container, Page, Reveal, ReleaseTile } from "../components/ui";
+import { listArtists, listReleases, type Artist, type Release } from "../lib/catalog";
 
 export default function Home() {
-  const [featured, setFeatured] = useState<Release | null>(null);
-  const [spotlight, setSpotlight] = useState<Artist | null>(null);
+  const [releases, setReleases] = useState<Release[]>([]);
+  const [artists, setArtists] = useState<Record<string, Artist>>({});
 
   useEffect(() => {
     let active = true;
     Promise.all([listReleases(), listArtists()])
-      .then(([releases, artists]) => {
+      .then(([rels, arts]) => {
         if (!active) return;
-        if (releases.length > 0) setFeatured(releases[0]);
-        if (artists.length > 0) setSpotlight(artists[0]);
+        setReleases(rels);
+        setArtists(Object.fromEntries(arts.map((a) => [a.id, a])));
       })
       .catch(() => {
-        /* Home still renders its hero even if the catalog is unavailable. */
+        /* still renders the intro line if the catalog is unavailable */
       });
     return () => {
       active = false;
@@ -35,32 +29,34 @@ export default function Home() {
   }, []);
 
   return (
-    <>
-      <section className="hero" aria-labelledby="home-heading">
-        <h1 id="home-heading">The home of AI reggae music.</h1>
-        <p className="tagline">
-          An official AI-native reggae imprint. Roots-deep, forward-looking —
-          artists, releases, and a catalog built for the next era of the sound.
-        </p>
-        <AiBadge />
-      </section>
-
-      {featured && (
-        <section className="featured" aria-labelledby="featured-heading">
-          <h2 id="featured-heading">Featured release</h2>
-          <Link to={`/releases/${featured.id}`}>
-            {featured.title} ({featured.catalogNumber})
-          </Link>
+    <Page>
+      <Container>
+        <section className="home-intro" aria-labelledby="home-heading">
+          <h1 id="home-heading" className="home-intro__title">
+            the home of AI <em>reggae</em> music
+          </h1>
+          <p className="home-intro__aside">
+            An AI-native imprint. Roots discipline, dub method — every record
+            disclosed.
+          </p>
         </section>
-      )}
 
-      {spotlight && (
-        <section className="spotlight" aria-labelledby="spotlight-heading">
-          <h2 id="spotlight-heading">Artist spotlight</h2>
-          <Link to={`/artists/${spotlight.id}`}>{spotlight.name}</Link>
-          <p>{spotlight.bio}</p>
-        </section>
-      )}
-    </>
+        <div className="toolbar" aria-hidden={releases.length === 0}>
+          <span className="toolbar__count">
+            {releases.length > 0 ? `${releases.length} release${releases.length === 1 ? "" : "s"}` : ""}
+          </span>
+        </div>
+
+        {releases.length > 0 && (
+          <ul className="tile-grid">
+            {releases.map((r, i) => (
+              <Reveal as="li" key={r.id} delay={i * 35}>
+                <ReleaseTile release={r} artistName={artists[r.artistId]?.name} />
+              </Reveal>
+            ))}
+          </ul>
+        )}
+      </Container>
+    </Page>
   );
 }

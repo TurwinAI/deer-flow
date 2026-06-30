@@ -1,8 +1,8 @@
 /**
- * Artists list (B06). Lists all label artists with links to each artist page.
+ * Artists index (SPEC §6) — the roster.
  */
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Container, Page, Eyebrow, Reveal, ArtistCard } from "../components/ui";
 import { listArtists, type Artist } from "../lib/catalog";
 
 export default function Artists() {
@@ -20,21 +20,31 @@ export default function Artists() {
   }, []);
 
   return (
-    <section aria-labelledby="artists-heading">
-      <h1 id="artists-heading">Artists</h1>
-      {error && <p role="alert">{error}</p>}
-      {artists === null && !error && <p>Loading artists…</p>}
-      {artists && artists.length === 0 && <p>No artists yet.</p>}
-      {artists && artists.length > 0 && (
-        <ul className="card-grid">
-          {artists.map((artist) => (
-            <li key={artist.id}>
-              <Link to={`/artists/${artist.id}`}>{artist.name}</Link>
-              <p>{artist.bio}</p>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+    <Page>
+      <Container>
+        <header className="page-head">
+          <Eyebrow>The roster</Eyebrow>
+          <h1>Artists</h1>
+          <p className="lede">The acts of the PlayReggaeMusic.ai imprint.</p>
+        </header>
+
+        {error && (
+          <p role="alert" className="empty">
+            {error}
+          </p>
+        )}
+        {artists === null && !error && <p className="empty">Loading artists…</p>}
+        {artists && artists.length === 0 && <p className="empty">No artists yet.</p>}
+        {artists && artists.length > 0 && (
+          <ul className="artist-grid" style={{ listStyle: "none" }}>
+            {artists.map((artist, i) => (
+              <Reveal as="li" key={artist.id} delay={i * 40}>
+                <ArtistCard to={`/artists/${artist.id}`} name={artist.name} bio={artist.bio} />
+              </Reveal>
+            ))}
+          </ul>
+        )}
+      </Container>
+    </Page>
   );
 }

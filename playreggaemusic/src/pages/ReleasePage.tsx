@@ -1,14 +1,21 @@
 /**
- * Release page (B06). Tracklist with preview playback, a Buy button that opens
- * a Polar checkout, the AI-generated badge, and the personal-license note.
- *
- * The catalog + checkout modules are imported (and mocked in tests), so this
- * page renders entirely from injected data with no live Firestore/Polar.
+ * Release artifact page (SPEC §6). Large cover, mono tracklist with inline
+ * preview players, buy affordance, AI provenance + license note. Test hooks
+ * preserved: h1 title, track titles, <audio> labels, AI badge, buy button
+ * label, license placeholder copy.
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import AiBadge from "../components/AiBadge";
-import LicenseNote from "../components/LicenseNote";
+import {
+  Container,
+  Page,
+  AiBadge,
+  Tag,
+  Button,
+  LicenseNote,
+  PlayButton,
+} from "../components/ui";
+import { ReleaseArt } from "../components/ui/cards";
 import {
   getRelease,
   getProductForRelease,
@@ -72,8 +79,6 @@ export default function ReleasePage() {
     setBuyError(null);
     try {
       const { checkoutUrl } = await createCheckout(productId);
-      // Fixtures mode (offline E2E): no Polar redirect — show an inline
-      // confirmation so the purchase intent is assertable without payment.
       if (fixturesEnabled()) {
         setConfirmation("Checkout started — you'll be redirected to secure payment.");
         setBuying(false);
@@ -86,64 +91,106 @@ export default function ReleasePage() {
     }
   }
 
-  if (error) return <p role="alert">{error}</p>;
-  if (!view) return <p>Loading release…</p>;
+  if (error)
+    return (
+      <Page>
+        <Container>
+          <p role="alert" className="empty">
+            {error}
+          </p>
+        </Container>
+      </Page>
+    );
+  if (!view)
+    return (
+      <Page>
+        <Container>
+          <p className="empty">Loading release…</p>
+        </Container>
+      </Page>
+    );
 
   const { release, tracks, product } = view;
 
   return (
-    <article aria-labelledby="release-title">
-      <header className="release-header">
-        <p className="catalog-number">{release.catalogNumber}</p>
-        <h1 id="release-title">{release.title}</h1>
-        <AiBadge />
-      </header>
+    <Page>
+      <Container>
+        <article className="release" aria-labelledby="release-title">
+          <div className="release__art">
+            <ReleaseArt catalogNumber={release.catalogNumber} title={release.title} />
+          </div>
 
-      <section aria-labelledby="tracklist-heading">
-        <h2 id="tracklist-heading">Tracklist</h2>
-        <ol className="tracklist">
-          {tracks.map((track) => (
-            <li key={track.id}>
-              <span className="track-title">{track.title}</span>
-              <span className="track-duration">{formatDuration(track.durationSec)}</span>
-              <audio
-                controls
-                preload="none"
-                src={previewUrl(track.previewClipPath)}
-                aria-label={`Preview of ${track.title}`}
-              >
-                Your browser does not support audio preview playback.
-              </audio>
-            </li>
-          ))}
-        </ol>
-      </section>
+          <div>
+            <header>
+              <p className="release__cat">{release.catalogNumber}</p>
+              <h1 id="release-title" className="release__title">
+                {release.title}
+              </h1>
+              <div className="release__badges">
+                <Tag>{release.type}</Tag>
+                <Tag>{release.releaseDate}</Tag>
+                <AiBadge />
+              </div>
+            </header>
 
-      <section aria-labelledby="buy-heading" className="buy">
-        <h2 id="buy-heading">Buy</h2>
-        {product ? (
-          <>
-            <p className="price">{formatPrice(product)}</p>
-            <button
-              type="button"
-              onClick={() => onBuy(product.id)}
-              disabled={buying}
-              aria-label={`Buy ${release.title} digital download`}
-            >
-              {buying ? "Starting checkout…" : "Buy digital download"}
-            </button>
-            {buyError && <p role="alert">{buyError}</p>}
-            {confirmation && (
-              <p role="status" className="checkout-confirmation">
-                {confirmation}
-              </p>
-            )}
-          </>
-        ) : (
-          <p>Not yet available for purchase.</p>
-        )}
-        <LicenseNote />
-      </section>
-    </article>
+            <section aria-labelledby="tracklist-heading">
+              <h2 id="tracklist-heading" className="eyebrow" style={{ color: "var(--text-muted)" }}>
+                Tracklist
+              </h2>
+              <ol className="tracklist">
+                {tracks.map((track, i) => (
+                  <li className="track" key={track.id}>
+                    <PlayButton
+                      track={{
+                        id: `${release.id}:${track.id}`,
+                        title: track.title,
+                        subtitle: `${release.title} · ${release.catalogNumber}`,
+                        src: previewUrl(track.previewClipPath),
+                      }}
+                      label={track.title}
+                    />
+                    <span className="track__no">{String(i + 1).padStart(2, "0")}</span>
+                    <span className="track__title">{track.title}</span>
+                    <span className="track__dur">{formatDuration(track.durationSec)}</span>
+                  </li>
+                ))}
+              </ol>
+            </section>
+
+            <section aria-labelledby="buy-heading" className="buy">
+              <h2 id="buy-heading" className="eyebrow" style={{ color: "var(--text-muted)", margin: 0 }}>
+                Buy
+              </h2>
+              {product ? (
+                <>
+                  <p className="buy__price">{formatPrice(product)}</p>
+                  <Button
+                    type="button"
+                    onClick={() => onBuy(product.id)}
+                    disabled={buying}
+                    aria-label={`Buy ${release.title} digital download`}
+                  >
+                    {buying ? "Starting checkout…" : "Buy digital download"}
+                  </Button>
+                  {buyError && (
+                    <p role="alert" className="empty">
+                      {buyError}
+                    </p>
+                  )}
+                  {confirmation && (
+                    <p role="status" className="checkout-confirmation">
+                      {confirmation}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="empty">Not yet available for purchase.</p>
+              )}
+              <LicenseNote />
+            </section>
+          </div>
+        </article>
+      </Container>
+    </Page>
   );
 }
